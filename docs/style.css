@@ -16,11 +16,11 @@ video,
 canvas,
 svg {
   display: block;
-  max-width: 100%;
+  max-width: 80%;
 }
 
 body {
-  font-family: "Inter", sans-serif;
+  font-family: "Apple Braille", serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   max-width: 1000px;
@@ -55,12 +55,12 @@ h2 {
 }
 
 .assignment a {
-  color: #000;
+  color: #070808;
   text-decoration: none;
 }
 
 .assignment a:hover {
-  color: #f06;
+  color: #00c4e2;
 }
 
 .assignment img {
