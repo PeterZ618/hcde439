@@ -3,16 +3,439 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, maximum-scale=1.0" />
-
-    <title>Example Student's HCDE 439 Physical Computing Page!</title>
-
+    <title>A2: Light-up Toy Prototype (Link Light Rail)</title>
     <link href="style.css" rel="stylesheet" type="text/css" />
   </head>
   <body>
-    <h1>Example Student's Assignment 2!</h1>
+    <h1>A2: Light-up Toy Prototype (Link Light Rail Map 2.0)</h1>
+    
     <div class="header">
-      <img src="牛来.jpg" />
-      <p>Here is all the documentation for assignment 2!</p>
+      <p>For this assignment, I upgraded my Link Light Rail map into an interactive toy using 9 LEDs, a buzzer, and a button state machine!</p>
     </div>
+
+    <div class="section">
+      <h2>1. Schematic & Circuit</h2>
+      
+      <img src="A2 电路图.jpg" alt="Circuit Schematic" />
+      <p><strong>Caption:</strong> Schematic showing 9 LEDs (each in series with a current-limiting resistor) and a button connected to Ground. 
+      <br><strong>LED Resistor Calculation:</strong> I used red/yellow/green LEDs with a typical forward voltage of ~2.0V and a desired current of 20mA (0.02A). Using Ohm's Law (V = I * R): (5V - 2.0V) / 0.02A = 150 ohms. I used 220-ohm resistors to be safe.
+      <br><strong>Button Resistor Explanation:</strong> I did not use an external physical resistor for the button. Instead, I used the <code>INPUT_PULLUP</code> mode in my code, which activates the Arduino's internal pull-up resistor (typically 20k to 50k ohms). This limits the current to a very safe amount (5V / 20,000 ohms = 0.25mA) preventing any short circuits when the button is pressed and connected to Ground.</p>
+
+      <img src="A2 插线图.jpg" alt="Breadboard Circuit" />
+      <p><strong>Caption:</strong> The real circuit with the button acting as the trigger to advance the light rail animation states.</p>
+    </div>
+
+    <div class="section">
+      <h2>2. Circuit Operation</h2>
+      <!-- Replace with your MP4 video or GIF -->
+      <video width="100%" controls>
+        <source src="A2 成品演示.mp4" type="video/mp4" />
+      </video>
+      <p><strong>Caption:</strong> Driver control buttons have been added:
+        <br/> 1. When the button is pressed, the lights switch to the next station announcement (the green LED gradually brightens using `analogWrite` to indicate the next station), and a melody plays.
+        <br/> 2. When the button is pressed again, the lights switch to indicate the upcoming stop (the red light flashes), and the arrival melody plays.
+        <br/> 3. After reaching the final stop, press the button once more to restart the program, completing the loop.
+      </p>
+      <video width="100%" controls>
+        <source src="A2 电路演示.mp4" type="video/mp4" />
+    </div>
+
+   <div class="section">
+      <h2>3. Firmware</h2>
+      <p>Here is my code featuring digitalWrite, digitalRead, analogWrite, arrays, and a for-loop. Every line is commented.</p>
+      
+      <!-- 使用 details 标签实现折叠，summary 是展示在外的标题 -->
+      <details>
+        <summary style="cursor: pointer; font-weight: bold; padding: 10px; background-color: #eeeeee; border-radius: 5px; margin-bottom: 10px;">
+          👉 Click to expand / collapse the Arduino Code
+        </summary>
+        
+        <pre><code>
+          // Include the pitches header file for musical notes definitions
+#include "piches.h"
+
+// Declare integer for LED pin a at digital pin 2
+int a = 2;
+// Declare integer for LED pin a1 at PWM pin 3
+int a1 = 3;
+// Declare integer for LED pin b at digital pin 4
+int b = 4;
+// Declare integer for LED pin a2 at PWM pin 5
+int a2 = 5;
+// Declare integer for LED pin a3 at PWM pin 6
+int a3 = 6;
+// Declare integer for LED pin c at digital pin 7
+int c = 7;
+// Declare integer for the button at digital pin 8
+int buttonPin = 8;
+// Declare integer for LED pin b1 at PWM pin 9
+int b1 = 9;
+// Declare integer for LED pin b2 at PWM pin 10
+int b2 = 10;
+// Declare integer for LED pin b3 at PWM pin 11
+int b3 = 11;
+// Declare integer for the buzzer at digital pin 12
+int buzzerPin = 12;
+
+// Declare an array containing all LED pin numbers to easily loop through them
+int allLedPins[] = {a, a1, a2, a3, b, b1, b2, b3, c};
+
+// Declare global array for the next stop melody notes
+int mldNext[] = {NOTE_A4, NOTE_E4};
+// Declare global array for the next stop note durations
+int durNext[] = {2, 2};
+// Declare global array for the arrived melody notes
+int mldArr[] = {NOTE_C5, NOTE_E5, NOTE_G5, NOTE_C6};
+// Declare global array for the arrived note durations
+int durArr[] = {8, 8, 8, 2};
+
+// Store the ID of the currently playing melody
+int currentMelody = 0;
+// Track the index of the currently playing note
+int noteIndex = 0;
+// Track the start time of the current note in milliseconds
+unsigned long noteStartTime = 0;
+// Track the required duration for the current note
+int noteDuration = 0;
+// Track the total time including the pause gap after the note
+int pauseDuration = 0;
+// Boolean flag to track if any melody is actively playing
+bool isPlaying = false;
+// Boolean flag to track if we are in the silent pause between notes
+bool isWaitingForNextNote = false;
+
+// Track the current sequence state of the light rail system
+int currentState = 0;
+// Track the confirmed logical state of the button
+int buttonState = HIGH;
+// Track the previous raw reading of the button for debounce
+int lastButtonState = HIGH;
+// Track the last time the button state changed
+unsigned long lastDebounceTime = 0;
+// Define the debounce delay time in milliseconds
+unsigned long debounceDelay = 50;
+
+// Define function to update buzzer state asynchronously without blocking
+void updateBuzzer() {
+    // Exit the function immediately if no melody is set to play
+    if (!isPlaying) return;
+    
+    // Retrieve the current time elapsed since the program started
+    unsigned long currentMillis = millis();
+    
+    // Check if we are currently playing the active tone part of the note
+    if (!isWaitingForNextNote) {
+        // Check if the current note has played for its full duration
+        if (currentMillis - noteStartTime >= noteDuration) {
+            // Transition to the pause state by setting the waiting flag to true
+            isWaitingForNextNote = true;
+        }
+    }
+    // Execute this block if we are in the pause phase after a note
+    else {
+        // Check if the total time including the silent pause has elapsed
+        if (currentMillis - noteStartTime >= pauseDuration) {
+            // Increment the note index to prepare for the next note
+            noteIndex++;
+            // Call startNote to begin playing the next note in the sequence
+            startNote();
+        }
+    }
+}
+
+// Define function to initialize and trigger the current note
+void startNote() {
+    // Declare a variable to store the pitch of the note to play
+    int noteToPlay = 0;
+    // Declare a variable to store the playback duration of the note
+    int duration = 0;
+    
+    // Check if the next stop melody is currently active
+    if (currentMelody == 1) {
+        // Verify if all notes in the next stop melody have been completed
+        if (noteIndex >= 2) {
+            // Mark playing status as false to fully stop the melody
+            isPlaying = false;
+            // Exit the function early since the melody is finished
+            return;
+        }
+        // Fetch the specific note pitch from the next stop array
+        noteToPlay = mldNext[noteIndex];
+        // Calculate the note duration based on its fraction value
+        duration = 1000 / durNext[noteIndex];
+    }
+    // Check if the arrived melody is currently active
+    else if (currentMelody == 2) {
+        // Verify if all notes in the arrived melody have been completed
+        if (noteIndex >= 4) {
+            // Mark playing status as false to fully stop the melody
+            isPlaying = false;
+            // Exit the function early since the melody is finished
+            return;
+        }
+        // Fetch the specific note pitch from the arrived array
+        noteToPlay = mldArr[noteIndex];
+        // Calculate the note duration based on its fraction value
+        duration = 1000 / durArr[noteIndex];
+    }
+    
+    // Activate the buzzer pin with the specified note pitch and duration
+    tone(buzzerPin, noteToPlay, duration);
+    // Save the active duration of the newly started note
+    noteDuration = duration;
+    // Calculate and save the total duration including the 30 percent gap
+    pauseDuration = duration * 1.30;
+    // Record the exact start time of this note
+    noteStartTime = millis();
+    // Reset the waiting flag to indicate a note is actively emitting sound
+    isWaitingForNextNote = false;
+}
+
+// Define function to trigger the playback of the next stop melody
+void playNextStop() {
+    // Set the active melody ID to 1 for the next stop sequence
+    currentMelody = 1;
+    // Reset the note index to 0 to start from the very beginning
+    noteIndex = 0;
+    // Set the playing status flag to true
+    isPlaying = true;
+    // Call startNote to begin emitting sound immediately
+    startNote();
+}
+
+// Define function to trigger the playback of the arrived melody
+void playArrived() {
+    // Set the active melody ID to 2 for the arrived sequence
+    currentMelody = 2;
+    // Reset the note index to 0 to start from the very beginning
+    noteIndex = 0;
+    // Set the playing status flag to true
+    isPlaying = true;
+    // Call startNote to begin emitting sound immediately
+    startNote();
+}
+
+// Define function to turn off all LEDs to clean up previous states using a for-loop
+void resetAllLEDs() {
+    // Start a for-loop to iterate through all 9 LED pins in the array
+    for (int i = 0; i < 9; i++) {
+        // Turn off each LED by setting its digital state to LOW
+        digitalWrite(allLedPins[i], LOW);
+        // Also write 0 to the pin using analogWrite to fully clear any active PWM fading
+        analogWrite(allLedPins[i], 0);
+    }
+}
+
+// Define function to advance the system to the next sequence state
+void advanceState() {
+    // Clean up all LEDs before transitioning
+    resetAllLEDs();
+    // Increment the state and wrap around to 0 after reaching 4
+    currentState = (currentState + 1) % 5;
+    
+    // Check if the new state corresponds to an arrival
+    if (currentState == 0 || currentState == 2 || currentState == 4) {
+        // Play the arrival melody
+        playArrived();
+    }
+    // Check if the new state corresponds to transit
+    else {
+        // Play the transit melody
+        playNextStop();
+    }
+}
+
+// Define function to handle button debouncing and state changes
+void checkButton() {
+    // Read the current physical state of the button pin
+    int reading = digitalRead(buttonPin);
+    
+    // Check if the button reading changed from the last loop
+    if (reading != lastButtonState) {
+        // Reset the debouncing timer
+        lastDebounceTime = millis();
+    }
+    
+    // Check if the state has been stable longer than the debounce delay
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+        // Check if the stable reading is different from the recorded logical state
+        if (reading != buttonState) {
+            // Update the logical button state to match the stable reading
+            buttonState = reading;
+            
+            // Trigger action only when the button is released (goes HIGH)
+            if (buttonState == HIGH) {
+                // Call function to advance to the next visual sequence
+                advanceState();
+            }
+        }
+    }
+    // Save the reading for the next loop comparison
+    lastButtonState = reading;
+}
+
+// Define function to blink a specific digital LED based on time
+void blinkDigitalPin(int pinToBlink) {
+    // Adjust blink interval here: 250 means 250ms ON and 250ms OFF
+    int blinkInterval = 250; 
+
+    // Check if the current time window is even
+    if ((millis() / blinkInterval) % 2 == 0) {
+        // Turn the LED on
+        digitalWrite(pinToBlink, HIGH);
+    }
+    // Execute if the current time window is odd
+    else {
+        // Turn the LED off
+        digitalWrite(pinToBlink, LOW);
+    }
+}
+
+// Define function to create an accumulation fading marquee effect for 3 pins
+void runFadeMarquee(int p1, int p2, int p3) {
+    // Adjust speed! This value represents the total milliseconds required for one cycle
+    int cycleTime = 700; 
+    
+    // Divide the entire cycle equally into 4 phases
+    int stepTime = cycleTime / 4;
+    
+    // Calculate the current phase within the cycle
+    int phase = millis() % cycleTime;
+    
+    // Declare brightness variables for the three LEDs
+    int br1 = 0, br2 = 0, br3 = 0;
+
+    // Phase 1: Fade in the 1st LED, keep the others off
+    if (phase < stepTime) {
+        br1 = map(phase, 0, stepTime, 0, 255);
+        br2 = 0;
+        br3 = 0;
+    }
+    // Phase 2: Keep the 1st LED at max brightness, fade in the 2nd LED, keep the 3rd LED off
+    else if (phase < stepTime * 2) {
+        br1 = 255;
+        br2 = map(phase, stepTime, stepTime * 2, 0, 255);
+        br3 = 0;
+    }
+    // Phase 3: Keep the 1st and 2nd LEDs at max brightness, fade in the 3rd LED
+    else if (phase < stepTime * 3) {
+        br1 = 255;
+        br2 = 255;
+        br3 = map(phase, stepTime * 2, stepTime * 3, 0, 255);
+    }
+    // Phase 4: Fade out all 3 LEDs simultaneously
+    else {
+        int fadeOut = map(phase, stepTime * 3, cycleTime, 255, 0);
+        br1 = fadeOut;
+        br2 = fadeOut;
+        br3 = fadeOut;
+    }
+
+    // HARDWARE FIX: Prevent Timer 2 conflict on Pins 3 and 11 during tone playback.
+    if (isPlaying && (p1 == 3 || p1 == 11)) {
+        digitalWrite(p1, br1 > 127 ? HIGH : LOW);
+    } else {
+        analogWrite(p1, br1);
+    }
+
+    if (isPlaying && (p2 == 3 || p2 == 11)) {
+        digitalWrite(p2, br2 > 127 ? HIGH : LOW);
+    } else {
+        analogWrite(p2, br2);
+    }
+
+    if (isPlaying && (p3 == 3 || p3 == 11)) {
+        digitalWrite(p3, br3 > 127 ? HIGH : LOW);
+    } else {
+        analogWrite(p3, br3);
+    }
+}
+
+// Define the standard Arduino setup function
+void setup() {
+    // Start a for-loop to initialize all LED pins
+    for (int i = 0; i < 9; i++) {
+        // Configure each LED pin in the array as a digital output
+        pinMode(allLedPins[i], OUTPUT);
+    }
+    // Configure the buzzer pin as a digital output
+    pinMode(buzzerPin, OUTPUT);
+    // Configure the button pin as an input with internal pullup resistor
+    pinMode(buttonPin, INPUT_PULLUP);
+    
+    // Start the initial arrival melody
+    playArrived();
+}
+
+// Define the standard Arduino loop function
+void loop() {
+    // Continually process the buzzer logic in the background
+    updateBuzzer();
+    // Continually check the physical button for debounced presses
+    checkButton();
+
+    // Check if the system is in State 0
+    if (currentState == 0) {
+        // Blink LED a repeatedly
+        blinkDigitalPin(a);
+        // Turn on LED b to show next destination
+        digitalWrite(b, HIGH);
+        // Turn on LED c to show final destination
+        digitalWrite(c, HIGH);
+    }
+    // Check if the system is in State 1
+    else if (currentState == 1) {
+        // Turn on LED b to show current destination
+        digitalWrite(b, HIGH);
+        // Turn on LED c to show final destination
+        digitalWrite(c, HIGH);
+        // Run the fade marquee animation on the first set of route LEDs
+        runFadeMarquee(a1, a2, a3);
+    }
+    // Check if the system is in State 2
+    else if (currentState == 2) {
+        // Blink LED b repeatedly
+        blinkDigitalPin(b);
+        // Turn on LED c to show final destination
+        digitalWrite(c, HIGH);
+    }
+    // Check if the system is in State 3
+    else if (currentState == 3) {
+        // Turn on LED c to show final destination
+        digitalWrite(c, HIGH);
+        // Run the fade marquee animation on the second set of route LEDs
+        runFadeMarquee(b1, b2, b3);
+    }
+    // Check if the system is in State 4
+    else if (currentState == 4) {
+        // Blink LED c repeatedly as the final arrival
+        blinkDigitalPin(c);
+    }
+}
+        </code></pre>
+      </details>
+    </div>
+
+    <div class="section">
+      <h2>4. Additional Questions</h2>
+      
+      <h3>Q1: Voltage vs Time chart for analogWrite()</h3>
+      <img src="A2 Q1.jpg" alt="PWM Chart" />
+      <p><strong>Explanation:</strong> The chart shows PWM (Pulse Width Modulation) duty cycles. <br>
+      - <code>analogWrite(led, 64)</code>: The LED receives 2V for ~25% of the time and 0V for 75%.<br>
+      - <code>analogWrite(led, 128)</code>: The LED receives 2V for 50% of the time and 0V for 50%.<br>
+      - <code>analogWrite(led, 255)</code>: The LED receives 2V continuously (100% duty cycle).</p>
+      
+      <h3>Q2: Total Current Draw & Battery Life</h3>
+      <p>If all 9 of my LEDs were on simultaneously at full brightness, each drawing ~20mA, the total LED current draw would be 180mA. The active buzzer draws about 30mA, bringing the absolute maximum total to ~210mA. The absolute maximum current limit for the ATmega328P chip's VCC/GND pins is 200mA. Therefore, turning everything on at 100% simultaneously is <strong>slightly above the limit</strong> and risky. However, my code multiplexes the lights (fading and blinking), so the average draw is much lower and completely safe.<br>
+      If the circuit drew a constant 180mA (just the LEDs), a 1200 mAh battery would run for: <strong>1200 mAh / 180 mA = 6.67 hours</strong>.</p>
+      
+      <h3>Q3: Actual vs Theoretical Voltage</h3>
+      <p>The theoretical forward voltage for the standard Red LED I used is typically around 2.0V. By measuring the actual voltage drop across the LED while it was turned on, I recorded a value of <strong>1.96V</strong>. This actual measured voltage aligns almost perfectly with the theoretical forward voltage. The tiny discrepancy of 0.04V is completely normal and is caused by the specific current-limiting resistor (220 ohms) dictating the exact current flow, as well as minor manufacturing variances within the LED diode itself.</p>
+      
+      <h3>Q4: AI Usage Statement</h3>
+      <p>Yes, I used an AI tool (Gemini) as a thought partner to help structure my complex state machine. Because my project required the buzzer and the fading lights to run concurrently, I couldn't use simple <code>delay()</code> functions. The AI helped me implement a non-blocking <code>millis()</code> timer structure and button debouncing logic. It also assisted me in refactoring my pin assignments into an Array so I could use a clean <code>for-loop</code> to reset all LED states simultaneously during state transitions.</p>
+    </div>
+
   </body>
 </html>
