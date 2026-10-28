@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, maximum-scale=1.0" />
+    <title>A3: InputOutput - Smart Home Ambient Light</title>
+    <link href="style.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body>
+    <h1>A3: InputOutput - Smart Home Ambient Light</h1>
+    
+    <div class="header">
+      <img src="A3 插线图.jpg" alt="Cover photo of the Smart Home Ambient Light" />
+      <p>Welcome to “Smart Ambient Lighting”! This system uses photoresistors, thermistors, and ultrasonic sensors to detect ambient light, room temperature, and human presence. It uses these sensors to assess the environment and dynamically adjust the dual RGB LED lights to create different atmospheres in your home. At night, it automatically switches to night light mode, and it turns off automatically when no one is home to conserve energy.</p>
+    </div>
+
+    <div class="section">
+      <h2>1. Schematic & Circuit</h2>
+      
+      <svg viewBox="0 0 950 580" width="100%" style="background: #ffffff; border: 1px solid #ddd; border-radius: 8px; font-family: 'Courier New', monospace;" xmlns="http://www.w3.org/2000/svg">
+  <!-- 样式定义 -->
+  <style>
+    .wire { stroke: #222; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .wire-r { stroke: #d9534f; stroke-width: 2; fill: none; }
+    .wire-g { stroke: #2e8b57; stroke-width: 2; fill: none; }
+    .wire-b { stroke: #0275d8; stroke-width: 2; fill: none; }
+    .comp { stroke: #000; stroke-width: 2; fill: #fff; }
+    .mcu { stroke: #000; stroke-width: 3; fill: #f8f9fa; }
+    .label { font-size: 13px; fill: #000; font-weight: bold; }
+    .sublabel { font-size: 11px; fill: #444; }
+    .pin { font-size: 12px; fill: #000; font-weight: bold; }
+    .vcc { font-size: 13px; fill: #d9534f; font-weight: bold; }
+    .dot { fill: #000; }
+  </style>
+
+  <!-- ==================== 左侧：两个分压电路 (A0, A1) ==================== -->
+  
+  <!-- 1. 光敏电阻分压器 (LDR -> A0) -->
+  <!-- +5V -->
+  <text x="85" y="45" class="vcc" text-anchor="middle">+5V</text>
+  <line x1="70" y1="52" x2="100" y2="52" class="wire" stroke="#d9534f" />
+  <line x1="85" y1="52" x2="85" y2="80" class="wire" />
+  <!-- R1: LDR Zigzag (y: 80 to 130) -->
+  <circle cx="85" cy="105" r="22" fill="none" stroke="#555" stroke-width="1.2" stroke-dasharray="3,2"/>
+  <polyline points="85,80 77,85 93,93 77,101 93,109 77,117 93,125 85,130" class="wire" />
+  <!-- 入射光箭头 -->
+  <line x1="48" y1="85" x2="62" y2="95" stroke="#000" stroke-width="1.5" />
+  <polygon points="62,95 56,94 60,89" fill="#000" />
+  <line x1="48" y1="98" x2="62" y2="108" stroke="#000" stroke-width="1.5" />
+  <polygon points="62,108 56,107 60,102" fill="#000" />
+  <text x="98" y="98" class="label">R1: LDR</text>
+  <text x="98" y="113" class="sublabel">(Photoresistor)</text>
+
+  <!-- 中间节点 -> A0 -->
+  <line x1="85" y1="130" x2="85" y2="185" class="wire" />
+  <circle cx="85" cy="158" r="3.5" class="dot" />
+  <line x1="85" y1="158" x2="310" y2="158" class="wire" />
+  <text x="195" y="152" class="sublabel" text-anchor="middle">V_measure1</text>
+
+  <!-- R2: 10k Fixed Resistor (y: 185 to 235) -->
+  <polyline points="85,185 77,190 93,198 77,206 93,214 77,222 93,230 85,235" class="wire" />
+  <text x="100" y="208" class="label">R2 = 10kΩ</text>
+  <line x1="85" y1="235" x2="85" y2="260" class="wire" />
+  <!-- GND -->
+  <line x1="73" y1="260" x2="97" y2="260" class="wire" />
+  <line x1="77" y1="265" x2="93" y2="265" class="wire" />
+  <line x1="81" y1="270" x2="89" y2="270" class="wire" />
+  <text x="85" y="284" class="sublabel" text-anchor="middle">GND</text>
+
+
+  <!-- 2. 热敏电阻分压器 (NTC -> A1) -->
+  <!-- +5V -->
+  <text x="85" y="315" class="vcc" text-anchor="middle">+5V</text>
+  <line x1="70" y1="322" x2="100" y2="322" class="wire" stroke="#d9534f" />
+  <line x1="85" y1="322" x2="85" y2="350" class="wire" />
+  <!-- R3: Thermistor Zigzag (y: 350 to 400) -->
+  <polyline points="85,350 77,355 93,363 77,371 93,379 77,387 93,395 85,400" class="wire" />
+  <!-- 热敏斜线符号 -->
+  <polyline points="68,395 102,355 110,355" fill="none" stroke="#000" stroke-width="1.5" />
+  <text x="115" y="370" class="label">R3: NTC (10kΩ)</text>
+  <text x="115" y="385" class="sublabel">(Thermistor t°)</text>
+
+  <!-- 中间节点 -> A1 -->
+  <line x1="85" y1="400" x2="85" y2="455" class="wire" />
+  <circle cx="85" cy="428" r="3.5" class="dot" />
+  <line x1="85" y1="428" x2="310" y2="428" class="wire" />
+  <text x="195" y="422" class="sublabel" text-anchor="middle">V_measure2</text>
+
+  <!-- R4: 10k Fixed Resistor (y: 455 to 505) -->
+  <polyline points="85,455 77,460 93,468 77,476 93,484 77,492 93,500 85,505" class="wire" />
+  <text x="100" y="478" class="label">R4 = 10kΩ</text>
+  <line x1="85" y1="505" x2="85" y2="530" class="wire" />
+  <!-- GND -->
+  <line x1="73" y1="530" x2="97" y2="530" class="wire" />
+  <line x1="77" y1="535" x2="93" y2="535" class="wire" />
+  <line x1="81" y1="540" x2="89" y2="540" class="wire" />
+  <text x="85" y="554" class="sublabel" text-anchor="middle">GND</text>
+
+
+  <!-- ==================== 中间：ARDUINO UNO R3 主控 ==================== -->
+  <rect x="310" y="60" width="210" height="460" rx="6" class="mcu" />
+  <text x="415" y="95" class="label" font-size="16" text-anchor="middle">ARDUINO UNO R3</text>
+  
+  <!-- 左侧引脚标签 -->
+  <text x="322" y="162" class="pin">A0 (Analog In)</text>
+  <text x="322" y="432" class="pin">A1 (Analog In)</text>
+
+  <!-- 右侧引脚标签 -->
+  <text x="508" y="115" class="pin" text-anchor="end">D9 (PWM)</text>
+  <text x="508" y="165" class="pin" text-anchor="end">D10 (PWM)</text>
+  <text x="508" y="215" class="pin" text-anchor="end">D5 (PWM)</text>
+  
+  <text x="508" y="345" class="pin" text-anchor="end">D4 (Trig)</text>
+  <text x="508" y="375" class="pin" text-anchor="end">D7 (Echo)</text>
+  <text x="508" y="435" class="pin" text-anchor="end">D8</text>
+  <text x="508" y="495" class="pin" text-anchor="end">D2 (INPUT_PULLUP)</text>
+
+
+  <!-- ==================== 右上：双并联 RGB LED 与 6个330Ω限流电阻 ==================== -->
+  <!-- 总线输出 D9(Red), D10(Green), D5(Blue) -->
+  <line x1="520" y1="110" x2="585" y2="110" class="wire-r" />
+  <line x1="520" y1="160" x2="600" y2="160" class="wire-g" />
+  <line x1="520" y1="210" x2="615" y2="210" class="wire-b" />
+
+  <!-- 分支节点 (并联分叉点) -->
+  <circle cx="585" cy="110" r="3.5" fill="#d9534f" />
+  <circle cx="600" cy="160" r="3.5" fill="#2e8b57" />
+  <circle cx="615" cy="210" r="3.5" fill="#0275d8" />
+
+  <!-- === RGB LED 1 (上方灯珠: y = 60, 90, 120) === -->
+  <line x1="585" y1="110" x2="585" y2="60" class="wire-r" />
+  <line x1="585" y1="60" x2="650" y2="60" class="wire-r" />
+  <line x1="600" y1="160" x2="600" y2="90" class="wire-g" />
+  <line x1="600" y1="90" x2="650" y2="90" class="wire-g" />
+  <line x1="615" y1="210" x2="615" y2="120" class="wire-b" />
+  <line x1="615" y1="120" x2="650" y2="120" class="wire-b" />
+
+  <!-- LED 1 的 3 个 330Ω 电阻 (x: 650 to 700) -->
+  <polyline points="650,60 655,54 663,66 671,54 679,66 687,54 695,66 700,60" class="wire" />
+  <text x="675" y="48" class="sublabel" text-anchor="middle">330Ω</text>
+  <polyline points="650,90 655,84 663,96 671,84 679,96 687,84 695,96 700,90" class="wire" />
+  <text x="675" y="80" class="sublabel" text-anchor="middle">330Ω</text>
+  <polyline points="650,120 655,114 663,126 671,114 679,126 687,114 695,126 700,120" class="wire" />
+  <text x="675" y="110" class="sublabel" text-anchor="middle">330Ω</text>
+
+  <!-- LED 1 封装框与内部二极管符号 -->
+  <line x1="700" y1="60" x2="740" y2="60" class="wire-r" />
+  <line x1="700" y1="90" x2="740" y2="90" class="wire-g" />
+  <line x1="700" y1="120" x2="740" y2="120" class="wire-b" />
+  <rect x="740" y="42" width="105" height="95" rx="4" fill="none" stroke="#555" stroke-dasharray="4,3" />
+  <text x="792" y="36" class="label" text-anchor="middle">RGB LED 1</text>
+  <!-- R/G/B 小二极管符号 -->
+  <polygon points="755,54 755,66 768,60" fill="#d9534f" /><line x1="768" y1="54" x2="768" y2="66" stroke="#000" stroke-width="2"/>
+  <text x="744" y="56" font-size="10" fill="#d9534f">R</text>
+  <polygon points="755,84 755,96 768,90" fill="#2e8b57" /><line x1="768" y1="84" x2="768" y2="96" stroke="#000" stroke-width="2"/>
+  <text x="744" y="86" font-size="10" fill="#2e8b57">G</text>
+  <polygon points="755,114 755,126 768,120" fill="#0275d8" /><line x1="768" y1="114" x2="768" y2="126" stroke="#000" stroke-width="2"/>
+  <text x="744" y="116" font-size="10" fill="#0275d8">B</text>
+  <!-- 共阴极汇总 -->
+  <line x1="768" y1="60" x2="815" y2="60" class="wire" />
+  <line x1="768" y1="90" x2="815" y2="90" class="wire" />
+  <line x1="768" y1="120" x2="815" y2="120" class="wire" />
+  <line x1="815" y1="60" x2="815" y2="120" class="wire" />
+  <line x1="815" y1="90" x2="880" y2="90" class="wire" />
+
+
+  <!-- === RGB LED 2 (下方灯珠: y = 180, 210, 240) === -->
+  <line x1="585" y1="110" x2="585" y2="180" class="wire-r" />
+  <line x1="585" y1="180" x2="650" y2="180" class="wire-r" />
+  <line x1="600" y1="160" x2="600" y2="210" class="wire-g" />
+  <line x1="600" y1="210" x2="650" y2="210" class="wire-g" />
+  <line x1="615" y1="210" x2="615" y2="240" class="wire-b" />
+  <line x1="615" y1="240" x2="650" y2="240" class="wire-b" />
+
+  <!-- LED 2 的 3 个 330Ω 电阻 (x: 650 to 700) -->
+  <polyline points="650,180 655,174 663,186 671,174 679,186 687,174 695,186 700,180" class="wire" />
+  <text x="675" y="168" class="sublabel" text-anchor="middle">330Ω</text>
+  <polyline points="650,210 655,204 663,216 671,204 679,216 687,204 695,216 700,210" class="wire" />
+  <text x="675" y="200" class="sublabel" text-anchor="middle">330Ω</text>
+  <polyline points="650,240 655,234 663,246 671,234 679,246 687,234 695,246 700,240" class="wire" />
+  <text x="675" y="230" class="sublabel" text-anchor="middle">330Ω</text>
+
+  <!-- LED 2 封装框与内部二极管符号 -->
+  <line x1="700" y1="180" x2="740" y2="180" class="wire-r" />
+  <line x1="700" y1="210" x2="740" y2="210" class="wire-g" />
+  <line x1="700" y1="240" x2="740" y2="240" class="wire-b" />
+  <rect x="740" y="162" width="105" height="95" rx="4" fill="none" stroke="#555" stroke-dasharray="4,3" />
+  <text x="792" y="156" class="label" text-anchor="middle">RGB LED 2</text>
+  <!-- R/G/B 小二极管符号 -->
+  <polygon points="755,174 755,186 768,180" fill="#d9534f" /><line x1="768" y1="174" x2="768" y2="186" stroke="#000" stroke-width="2"/>
+  <text x="744" y="176" font-size="10" fill="#d9534f">R</text>
+  <polygon points="755,204 755,216 768,210" fill="#2e8b57" /><line x1="768" y1="204" x2="768" y2="216" stroke="#000" stroke-width="2"/>
+  <text x="744" y="206" font-size="10" fill="#2e8b57">G</text>
+  <polygon points="755,234 755,246 768,240" fill="#0275d8" /><line x1="768" y1="234" x2="768" y2="246" stroke="#000" stroke-width="2"/>
+  <text x="744" y="236" font-size="10" fill="#0275d8">B</text>
+  <!-- 共阴极汇总 -->
+  <line x1="768" y1="180" x2="815" y2="180" class="wire" />
+  <line x1="768" y1="210" x2="815" y2="210" class="wire" />
+  <line x1="768" y1="240" x2="815" y2="240" class="wire" />
+  <line x1="815" y1="180" x2="815" y2="240" class="wire" />
+  <line x1="815" y1="210" x2="880" y2="210" class="wire" />
+
+  <!-- 两条共阴极汇总接地 GND -->
+  <line x1="880" y1="90" x2="880" y2="265" class="wire" />
+  <circle cx="880" cy="210" r="3.5" class="dot" />
+  <line x1="868" y1="265" x2="892" y2="265" class="wire" />
+  <line x1="872" y1="270" x2="888" y2="270" class="wire" />
+  <line x1="876" y1="275" x2="884" y2="275" class="wire" />
+  <text x="880" y="290" class="sublabel" text-anchor="middle">GND</text>
+
+
+  <!-- ==================== 右下：超声波、蜂鸣器、按钮 ==================== -->
+
+  <!-- 1. HC-SR04 超声波传感器 (D4, D7) -->
+  <rect x="650" y="315" width="140" height="80" rx="4" class="comp" />
+  <text x="720" y="352" class="label" text-anchor="middle">HC-SR04</text>
+  <text x="720" y="368" class="sublabel" text-anchor="middle">Ultrasonic</text>
+  <!-- Trig & Echo 连线 -->
+  <line x1="520" y1="340" x2="650" y2="340" class="wire" />
+  <text x="656" y="344" class="sublabel">Trig</text>
+  <line x1="520" y1="370" x2="650" y2="370" class="wire" />
+  <text x="656" y="374" class="sublabel">Echo</text>
+  <!-- VCC & GND -->
+  <line x1="720" y1="315" x2="720" y2="295" class="wire" />
+  <text x="720" y="290" class="vcc" text-anchor="middle">+5V</text>
+  <line x1="790" y1="355" x2="830" y2="355" class="wire" />
+  <line x1="830" y1="355" x2="830" y2="375" class="wire" />
+  <line x1="820" y1="375" x2="840" y2="375" class="wire" />
+  <line x1="824" y1="380" x2="836" y2="380" class="wire" />
+  <text x="830" y="393" class="sublabel" text-anchor="middle">GND</text>
+
+  <!-- 2. 蜂鸣器 Buzzer (D8) -->
+  <line x1="520" y1="430" x2="650" y2="430" class="wire" />
+  <rect x="650" y="415" width="35" height="30" class="comp" />
+  <polygon points="685,415 705,403 705,457 685,445" class="comp" />
+  <text x="745" y="435" class="label">Buzzer</text>
+  <line x1="667" y1="445" x2="667" y2="462" class="wire" />
+  <line x1="657" y1="462" x2="677" y2="462" class="wire" />
+  <line x1="661" y1="467" x2="673" y2="467" class="wire" />
+
+  <!-- 3. 按钮 Push Button (D2 -> GND) -->
+  <line x1="520" y1="490" x2="640" y2="490" class="wire" />
+  <circle cx="640" cy="490" r="3.5" class="dot" />
+  <!-- 开关触点符号 -->
+  <line x1="640" y1="490" x2="685" y2="472" class="wire" />
+  <circle cx="690" cy="490" r="3.5" class="dot" />
+  <line x1="690" y1="490" x2="740" y2="490" class="wire" />
+  <line x1="740" y1="490" x2="740" y2="510" class="wire" />
+  <line x1="728" y1="510" x2="752" y2="510" class="wire" />
+  <line x1="732" y1="515" x2="748" y2="515" class="wire" />
+  <line x1="736" y1="520" x2="744" y2="520" class="wire" />
+  <text x="665" y="515" class="label" text-anchor="middle">Push Button</text>
+  <text x="740" y="534" class="sublabel" text-anchor="middle">GND</text>
+</svg>
+      <p><strong>Caption:</strong> The schematic above shows the complete wiring for the dual RGB LEDs, the button with an internal pull-up resistor, the buzzer, the ultrasonic sensor, and the two voltage dividers for the photoresistor and thermistor.</p>
+      
+      <h3>Resistor & Voltage Divider Calculations:</h3>
+      <ul>
+        <li>
+          <strong>Photoresistor (LDR) Voltage Divider (Pin A0):</strong><br>
+          I connected the photoresistor as R<sub>1</sub> (connected to 5V) and a fixed resistor R<sub>2</sub> = 10k&Omega; (connected to GND). Under bright indoor/sunny light, the LDR resistance drops to roughly 1k&Omega; to 2k&Omega;; in darkness, it rises to over 50k&Omega;.<br>
+          Using the voltage divider formula: <strong>V<sub>out</sub> = V<sub>in</sub> &times; [ R<sub>2</sub> / (R<sub>1</sub> + R<sub>2</sub>) ]</strong>:<br>
+          - <em>In bright light (assume R<sub>1</sub> = 1.5k&Omega;):</em> V<sub>out</sub> = 5V &times; [ 10k&Omega; / (1.5k&Omega; + 10k&Omega;) ] = <strong>4.35V</strong>. The 10-bit <code>analogRead()</code> value will be roughly: (4.35V / 5V) &times; 1023 &approx; <strong>890</strong>.<br>
+          - <em>In darkness (assume R<sub>1</sub> = 20k&Omega;):</em> V<sub>out</sub> = 5V &times; [ 10k&Omega; / (20k&Omega; + 10k&Omega;) ] = <strong>1.67V</strong>. The <code>analogRead()</code> value will be roughly: (1.67V / 5V) &times; 1023 &approx; <strong>341</strong>.<br>
+          Choosing a <strong>10k&Omega;</strong> fixed resistor maximizes the voltage swing across my target lighting conditions, giving me clear thresholds in my code (<code>darkThresh = 750</code> and <code>sunnyThresh = 900</code>).
+        </li>
+        <br>
+        <li>
+          <strong>Thermistor (NTC) Voltage Divider (Pin A1):</strong><br>
+          I used a standard 10k&Omega; NTC thermistor at room temperature (25&deg;C). To get the best sensitivity around room temperature, the fixed resistor R<sub>2</sub> should match the thermistor's nominal resistance. Therefore, I chose a <strong>10k&Omega;</strong> resistor.<br>
+          At 25&deg;C (R<sub>1</sub> = 10k&Omega;), V<sub>out</sub> = 5V &times; [ 10k&Omega; / (10k&Omega; + 10k&Omega;) ] = <strong>2.50V</strong>, which corresponds to an <code>analogRead()</code> value of around <strong>512</strong>. When warmed up by hand or warm air, its resistance drops to ~8k&Omega;, raising V<sub>out</sub> to 5V &times; (10 / 18) = <strong>2.78V</strong> (an <code>analogRead()</code> value of ~<strong>569</strong>, which crosses my <code>tempThresh = 565</code>).
+        </li>
+        <br>
+        <li>
+          <strong>Dual RGB LED Current-Limiting Resistors (Pins 5, 9, 10):</strong><br>
+          Because I wired two RGB LEDs in parallel to the same three PWM pins (Pins 5, 9, and 10), each Arduino pin supplies current to two LED channels simultaneously. The maximum safe current per Arduino I/O pin is 20mA to 40mA. Assuming a 2.0V forward voltage (V<sub>f</sub>) for the Red channel and using a <strong>330&Omega;</strong> resistor for each individual LED leg:<br>
+          <strong>I = (V<sub>cc</sub> - V<sub>f</sub>) / R</strong> = (5V - 2.0V) / 330&Omega; = <strong>9.1mA</strong> per LED.<br>
+          With two LEDs in parallel, the total current drawn from a single Arduino pin is 9.1mA &times; 2 = <strong>18.2mA</strong> (and even less for Green and Blue, which have a ~3.2V forward voltage, drawing ~5.5mA &times; 2 = 11mA). This keeps every pin safely below the 20mA continuous current limit!
+        </li>
+      </ul>
+
+      <img src="A3 插线图.jpg" alt="Breadboard Circuit" />
+      <p><strong>Caption:</strong> The physical breadboard implementation showing the Arduino Uno R3, HC-SR04 ultrasonic distance sensor, LDR, thermistor, buzzer, push button, and dual RGB LEDs.</p>
+    </div>
+
+    <div class="section">
+      <h2>2. Circuit Operation & Serial Monitor</h2>
+      
+      <video width="100%" controls>
+        <source src="A3 动态演示.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+      <p><strong>Caption:</strong> Smart Home Ambient Lighting Demo:
+        <br/>Master Switch: Press and release the button to turn the system on, accompanied by an audible prompt. Press and release the button again to turn the system off, accompanied by an audible prompt.
+        <br/>When activated:
+        <br/>1. In bright lighting conditions, this device can detect human presence indoors and adjust brightness via the map() function. The smart lights will transition between four weather states (hot and sunny = blue, cold and sunny = red, hot and cloudy = pink, cold and cloudy = orange), changing colors accordingly.
+        <br/>2. In a dark environment, if someone is resting indoors (detected as not moving significantly, the lights will automatically turn off), a warm yellow light will turn on if movement is detected. </p>
+
+      <h3>Example Output from Serial Monitor:</h3>
+      <pre><code>
+Light: 925 | Temp: 572 | Dist: 18 cm
+Light: 920 | Temp: 555 | Dist: 22 cm
+Light: 810 | Temp: 575 | Dist: 15 cm
+Light: 805 | Temp: 548 | Dist: 25 cm
+Light: 680 | Temp: 550 | Dist: 12 cm
+      </code></pre>
+      <p><strong>Justification of Code Values:</strong> In my environment, ambient room lighting produces an <code>analogRead(A0)</code> baseline around 800, while shining a desk lamp (simulating sunny weather) pushes the reading above 900, and covering the sensor drops it below 750. Thus, I set <code>darkThresh = 750</code> and <code>sunnyThresh = 900</code>. For the thermistor on Pin A1, ambient room temperature reads around 550, and warming it up pushes it past 570, so I chose <code>tempThresh = 565</code> as the midpoint to distinguish between "Cold" and "Hot" states.</p>
+    </div>
+
+    <div class="section">
+      <h2>3. Firmware</h2>
+      <p>Here is my fully commented Arduino code utilizing <code>analogRead()</code>, <code>analogWrite()</code>, <code>map()</code>, and nested <code>if-else</code> statements.</p>
+      
+      <details>
+        <summary style="cursor: pointer; font-weight: bold; padding: 10px; background-color: #eeeeee; border-radius: 5px; margin-bottom: 10px;">
+          👉 Click to expand / collapse the Arduino Code
+        </summary>
+        
+        <pre><code>
+// Define the pin for the button (Digital Pin 2)
+const int buttonPin = 2;
+// Define the pin for the Ultrasonic Trig (Digital Pin 4)
+const int trigPin = 4;
+// Define the pin for the Ultrasonic Echo (Digital Pin 7)
+const int echoPin = 7;
+// Define the pin for the Buzzer (Digital Pin 8)
+const int buzzerPin = 8;
+// Define the PWM pin for the Red LED (Digital Pin 9)
+const int ledR = 9;
+// Define the PWM pin for the Green LED (Digital Pin 10)
+const int ledG = 10;
+// Define the PWM pin for the Blue LED (Digital Pin 5)
+const int ledB = 5;
+// Define the analog pin for the Photoresistor/LDR (Analog Pin 0)
+const int ldrPin = A0;
+// Define the analog pin for the Thermistor/NTC (Analog Pin 1)
+const int ntcPin = A1;
+
+// Set the night mode timeout in milliseconds
+const unsigned long nightTimeout = 5000; 
+// Set the distance threshold for night mode (in cm, requires larger movement)
+const int nightDistThresh = 20;         
+
+// Set the day mode timeout in milliseconds
+const unsigned long dayTimeout = 5000;   
+// Set the distance threshold for day mode (in cm, high sensitivity)
+const int dayDistThresh = 30;           
+
+// Set the light value below which it is considered "Dark/Night"
+const int darkThresh = 750;              
+// Set the light value above which it is considered "Sunny/High Brightness"
+const int sunnyThresh = 900;             
+
+// Set the temperature threshold to distinguish between Hot and Cold
+const int tempThresh = 565;               
+
+// Define Red channel for Hot + High Brightness (Pure Blue)
+const int hotBrightR = 0;
+// Define Green channel for Hot + High Brightness (Pure Blue)
+const int hotBrightG = 0;
+// Define Blue channel for Hot + High Brightness (Pure Blue)
+const int hotBrightB = 255;
+
+// Define Red channel for Cold + Low Brightness (Orange/Yellow)
+const int coldDimR = 255;
+// Define Green channel for Cold + Low Brightness (Orange/Yellow)
+const int coldDimG = 80;
+// Define Blue channel for Cold + Low Brightness (Orange/Yellow)
+const int coldDimB = 0;
+
+// Define Red channel for Hot + Low Brightness (Pink)
+const int hotDimR = 255;
+// Define Green channel for Hot + Low Brightness (Pink)
+const int hotDimG = 20;
+// Define Blue channel for Hot + Low Brightness (Pink)
+const int hotDimB = 100;
+
+// Define Red channel for Cold + High Brightness (Pure Red)
+const int coldBrightR = 255;
+// Define Green channel for Cold + High Brightness (Pure Red)
+const int coldBrightG = 0;
+// Define Blue channel for Cold + High Brightness (Pure Red)
+const int coldBrightB = 0;
+
+// Define Red channel for Night mode (Dim warm color)
+const int nightR = 150;
+// Define Green channel for Night mode (Dim warm color)
+const int nightG = 40;
+// Define Blue channel for Night mode (Dim warm color)
+const int nightB = 0;
+
+// Track whether the main system power is ON or OFF
+bool systemOn = false;
+
+// Track the confirmed logical state of the button for debouncing
+int buttonState = HIGH;
+// Track the previous raw reading of the button
+int lastButtonState = HIGH;
+// Track the last time the button state changed to filter noise
+unsigned long lastDebounceTime = 0;
+// Define the debounce delay time in milliseconds
+const unsigned long debounceDelay = 50;
+
+// Track the last time movement was detected
+unsigned long lastMoveTime = 0;
+// Track the last time the ultrasonic sensor was pinged
+unsigned long lastPingTime = 0;
+// Track the last time data was printed to the serial monitor
+unsigned long lastPrintTime = 0;
+
+// Store the current Red LED brightness for smooth fading
+float currentR = 0;
+// Store the current Green LED brightness for smooth fading
+float currentG = 0;
+// Store the current Blue LED brightness for smooth fading
+float currentB = 0;
+// Store the target Red LED brightness
+int targetR = 0;
+// Store the target Green LED brightness
+int targetG = 0;
+// Store the target Blue LED brightness
+int targetB = 0;
+// Track the last time the LED fade values were updated
+unsigned long lastFadeTime = 0;
+
+// Declare the setup function to initialize pins and serial communication
+void setup() {
+  // Start the serial communication at 9600 baud rate
+  Serial.begin(9600);
+  
+  // Configure the button pin as an input with internal pullup resistor
+  pinMode(buttonPin, INPUT_PULLUP);
+  // Configure the ultrasonic trig pin as output
+  pinMode(trigPin, OUTPUT);
+  // Configure the ultrasonic echo pin as input
+  pinMode(echoPin, INPUT);
+  // Configure the buzzer pin as output
+  pinMode(buzzerPin, OUTPUT);
+  
+  // Configure the Red LED pin as output
+  pinMode(ledR, OUTPUT);
+  // Configure the Green LED pin as output
+  pinMode(ledG, OUTPUT);
+  // Configure the Blue LED pin as output
+  pinMode(ledB, OUTPUT);
+}
+
+// Declare the main loop function that runs repeatedly
+void loop() {
+  // Store the current time in milliseconds to avoid multiple calls
+  unsigned long currentMillis = millis();
+
+  // Read the current physical state of the button pin
+  int reading = digitalRead(buttonPin);
+  
+  // Check if the button reading changed from the last loop
+  if (reading != lastButtonState) {
+    // Reset the debouncing timer
+    lastDebounceTime = currentMillis;
+  }
+  
+  // Check if the state has been stable longer than the debounce delay
+  if ((currentMillis - lastDebounceTime) > debounceDelay) {
+    // Check if the stable reading is different from the recorded logical state
+    if (reading != buttonState) {
+      // Update the logical button state to match the stable reading
+      buttonState = reading;
+      
+      // Trigger action only when the button is released (goes HIGH)
+      if (buttonState == HIGH) {
+        // Toggle the system power state
+        systemOn = !systemOn; 
+        
+        // Check if the system was just turned ON
+        if (systemOn) {
+          // Play the ascending boot sound
+          playBootSound();
+          // Reset the movement timer so lights turn on immediately
+          lastMoveTime = currentMillis; 
+        } 
+        // Execute if the system was just turned OFF
+        else {
+          // Play the descending shutdown sound
+          playShutdownSound();
+          // Set the target Red LED brightness to zero
+          targetR = 0;
+          // Set the target Green LED brightness to zero
+          targetG = 0;
+          // Set the target Blue LED brightness to zero
+          targetB = 0;
+        }
+      }
+    }
+  }
+  // Save the reading for the next loop comparison
+  lastButtonState = reading;
+
+  // Execute sensor readings ONLY if the main system is ON
+  if (systemOn) {
+    // Check if 100ms have passed since the last ultrasonic ping
+    if (currentMillis - lastPingTime > 100) {
+      // Update the last ping time
+      lastPingTime = currentMillis;
+      
+      // Call the function to get distance in centimeters
+      long distance = getDistance();
+      // Read the light level from the photoresistor
+      int lightLevel = analogRead(ldrPin);
+      // Read the temperature level from the thermistor
+      int tempLevel = analogRead(ntcPin);
+
+      // Check if it is time to print data to the serial monitor (every 500ms)
+      if (currentMillis - lastPrintTime > 500) {
+        // Update the last print time
+        lastPrintTime = currentMillis;
+        // Print the label for the light reading
+        Serial.print("Light: ");
+        // Print the actual light sensor value
+        Serial.print(lightLevel);
+        // Print the label for the temperature reading
+        Serial.print(" | Temp: ");
+        // Print the actual temperature sensor value
+        Serial.print(tempLevel);
+        // Print the label for the distance reading
+        Serial.print(" | Dist: ");
+        // Print the actual ultrasonic distance value
+        Serial.print(distance);
+        // Print the unit and move to a new line
+        Serial.println(" cm");
+      }
+
+      // Check if the environment is considered Dark (Night Mode)
+      if (lightLevel < darkThresh) {
+        // Check if a person is detected within the night distance threshold
+        if (distance > 0 && distance < nightDistThresh) {
+          // Update the last move time for night mode
+          lastMoveTime = currentMillis;
+        }
+        
+        // Check if the time since last movement is within the night timeout
+        if (currentMillis - lastMoveTime < nightTimeout) {
+          // Set target Red channel to night light value
+          targetR = nightR;
+          // Set target Green channel to night light value
+          targetG = nightG;
+          // Set target Blue channel to night light value
+          targetB = nightB;
+        } 
+        // Execute if no movement was detected within the timeout
+        else {
+          // Turn off the Red LED channel to save power
+          targetR = 0;
+          // Turn off the Green LED channel to save power
+          targetG = 0;
+          // Turn off the Blue LED channel to save power
+          targetB = 0;
+        }
+      } 
+      // Execute if the environment is considered Bright (Day Mode)
+      else {
+        // Check if a person is detected within the high-sensitivity day threshold
+        if (distance > 0 && distance < dayDistThresh) {
+          // Update the last move time for day mode
+          lastMoveTime = currentMillis;
+        }
+        
+        // Check if the time since last movement is within the day timeout
+        if (currentMillis - lastMoveTime < dayTimeout) {
+          // Constrain the light reading between darkThresh and 1023 for safe mapping
+          int constrainedLight = constrain(lightLevel, darkThresh, 1023);
+          // Use map() to dynamically scale brightness factor from 60% to 100% based on daylight intensity
+          int brightnessScale = map(constrainedLight, darkThresh, 1023, 150, 255);
+          
+          // Check Condition 1: High Brightness (Sunny weather)
+          if (lightLevel >= sunnyThresh) {
+            // Check if the temperature is Hot
+            if (tempLevel >= tempThresh) {
+              // Scale and set Red channel for Hot + Sunny (Pure Blue)
+              targetR = (hotBrightR * brightnessScale) / 255;
+              // Scale and set Green channel for Hot + Sunny (Pure Blue)
+              targetG = (hotBrightG * brightnessScale) / 255;
+              // Scale and set Blue channel for Hot + Sunny (Pure Blue)
+              targetB = (hotBrightB * brightnessScale) / 255;
+            } 
+            // Execute if the temperature is Cold
+            else {
+              // Scale and set Red channel for Cold + Sunny (Pure Red)
+              targetR = (coldBrightR * brightnessScale) / 255;
+              // Scale and set Green channel for Cold + Sunny (Pure Red)
+              targetG = (coldBrightG * brightnessScale) / 255;
+              // Scale and set Blue channel for Cold + Sunny (Pure Red)
+              targetB = (coldBrightB * brightnessScale) / 255;
+            }
+          } 
+          // Check Condition 2: Low Brightness (Cloudy weather)
+          else {
+            // Check if the temperature is Hot
+            if (tempLevel >= tempThresh) {
+              // Scale and set Red channel for Hot + Cloudy (Pink)
+              targetR = (hotDimR * brightnessScale) / 255;
+              // Scale and set Green channel for Hot + Cloudy (Pink)
+              targetG = (hotDimG * brightnessScale) / 255;
+              // Scale and set Blue channel for Hot + Cloudy (Pink)
+              targetB = (hotDimB * brightnessScale) / 255;
+            } 
+            // Execute if the temperature is Cold
+            else {
+              // Scale and set Red channel for Cold + Cloudy (Orange/Yellow)
+              targetR = (coldDimR * brightnessScale) / 255;
+              // Scale and set Green channel for Cold + Cloudy (Orange/Yellow)
+              targetG = (coldDimG * brightnessScale) / 255;
+              // Scale and set Blue channel for Cold + Cloudy (Orange/Yellow)
+              targetB = (coldDimB * brightnessScale) / 255;
+            }
+          }
+        } 
+        // Execute if nobody is detected for the timeout period in day mode
+        else {
+          // Fade out Red channel to standby mode
+          targetR = 0;
+          // Fade out Green channel to standby mode
+          targetG = 0;
+          // Fade out Blue channel to standby mode
+          targetB = 0;
+        }
+      }
+    }
+  }
+
+  // Run the smooth LED fading engine every 10 milliseconds
+  if (currentMillis - lastFadeTime > 10) {
+    // Update the last fade time
+    lastFadeTime = currentMillis;
+    
+    // Increment Red brightness if below target
+    if (currentR < targetR) currentR += 1.0;
+    // Decrement Red brightness if above target
+    else if (currentR > targetR) currentR -= 1.0;
+    
+    // Increment Green brightness if below target
+    if (currentG < targetG) currentG += 1.0;
+    // Decrement Green brightness if above target
+    else if (currentG > targetG) currentG -= 1.0;
+    
+    // Increment Blue brightness if below target
+    if (currentB < targetB) currentB += 1.0;
+    // Decrement Blue brightness if above target
+    else if (currentB > targetB) currentB -= 1.0;
+    
+    // Apply the calculated PWM value to the Red LED pin
+    analogWrite(ledR, (int)currentR);
+    // Apply the calculated PWM value to the Green LED pin
+    analogWrite(ledG, (int)currentG);
+    // Apply the calculated PWM value to the Blue LED pin
+    analogWrite(ledB, (int)currentB);
+  }
+}
+
+// Define function to play an ascending boot sound
+void playBootSound() {
+  // Play a 1046Hz tone for 100ms
+  tone(buzzerPin, 1046, 100);
+  // Wait for the tone to finish
+  delay(100);
+  // Play a 1318Hz tone for 100ms
+  tone(buzzerPin, 1318, 100);
+  // Wait for the tone to finish
+  delay(100);
+  // Play a 1568Hz tone for 150ms
+  tone(buzzerPin, 1568, 150);
+  // Wait for the tone to finish
+  delay(150);
+}
+
+// Define function to play a descending shutdown sound
+void playShutdownSound() {
+  // Play an 884Hz tone for 100ms
+  tone(buzzerPin, 884, 100);
+  // Wait for the tone to finish
+  delay(100);
+  // Play a 351Hz tone for 200ms
+  tone(buzzerPin, 351, 200);
+  // Wait for the tone to finish
+  delay(150);
+}
+
+// Define function to measure distance using the ultrasonic sensor without blocking
+long getDistance() {
+  // Clear the trig pin to LOW
+  digitalWrite(trigPin, LOW);
+  // Wait 2 microseconds
+  delayMicroseconds(2);
+  // Set the trig pin HIGH to send a sound wave
+  digitalWrite(trigPin, HIGH);
+  // Keep it HIGH for 10 microseconds
+  delayMicroseconds(10);
+  // Set the trig pin back to LOW
+  digitalWrite(trigPin, LOW);
+  
+  // Wait up to 20000us for the echo pulse to return
+  long duration = pulseIn(echoPin, HIGH, 20000); 
+  
+  // Check if pulseIn timed out (no object detected)
+  if (duration == 0) return 999; 
+  
+  // Calculate and return distance in centimeters
+  return duration * 0.034 / 2;
+}
+        </code></pre>
+      </details>
+    </div>
+
+    <div class="section">
+      <h2>4. Additional Questions</h2>
+      
+      <h3>Question 1: In your voltage divider, can the variable resistor be either R1 or R2 or does it need to be one or the other? Justify your answer with example calculations.</h3>
+      <p>The variable resistor can be placed as <strong>either R<sub>1</sub> (connected to V<sub>in</sub> = 5V) or R<sub>2</sub> (connected to GND)</strong>; neither is strictly required by hardware, and both will form a working voltage divider. However, switching its position <strong>inverts the relationship</strong> between the physical change and the measured output voltage (V<sub>out</sub>).</p>
+      <p>Using the voltage divider equation <strong>V<sub>out</sub> = 5V &times; [ R<sub>2</sub> / (R<sub>1</sub> + R<sub>2</sub>) ]</strong>, let's use a 10k&Omega; fixed resistor and a photoresistor whose resistance is <strong>2k&Omega; in bright light</strong> and <strong>20k&Omega; in the dark</strong>:</p>
+      <ul>
+        <li>
+          <strong>Case A: Variable Resistor as R<sub>1</sub> (top) and 10k&Omega; Fixed Resistor as R<sub>2</sub> (bottom, as wired in my circuit):</strong><br>
+          - <em>Bright light (R<sub>1</sub> = 2k&Omega;):</em> V<sub>out</sub> = 5V &times; [ 10k&Omega; / (2k&Omega; + 10k&Omega;) ] = <strong>4.17V</strong> (<code>analogRead</code> &approx; 853).<br>
+          - <em>Darkness (R<sub>1</sub> = 20k&Omega;):</em> V<sub>out</sub> = 5V &times; [ 10k&Omega; / (20k&Omega; + 10k&Omega;) ] = <strong>1.67V</strong> (<code>analogRead</code> &approx; 341).<br>
+          <em>Result:</em> As brightness increases, V<sub>out</sub> increases (intuitive positive correlation with light).
+        </li>
+        <br>
+        <li>
+          <strong>Case B: 10k&Omega; Fixed Resistor as R<sub>1</sub> (top) and Variable Resistor as R<sub>2</sub> (bottom):</strong><br>
+          - <em>Bright light (R<sub>2</sub> = 2k&Omega;):</em> V<sub>out</sub> = 5V &times; [ 2k&Omega; / (10k&Omega; + 2k&Omega;) ] = <strong>0.83V</strong> (<code>analogRead</code> &approx; 170).<br>
+          - <em>Darkness (R<sub>2</sub> = 20k&Omega;):</em> V<sub>out</sub> = 5V &times; [ 20k&Omega; / (10k&Omega; + 20k&Omega;) ] = <strong>3.33V</strong> (<code>analogRead</code> &approx; 682).<br>
+          <em>Result:</em> As brightness increases, V<sub>out</sub> decreases. Both configurations work equally well as long as you adjust your <code>if</code>-statement thresholds and <code>map()</code> direction in the code to match!
+        </li>
+      </ul>
+
+      <h3>Question 2: Draw a graph where the x-axis is time and the y-axis is voltage. Plot the voltage at V-measure of your voltage divider of your shared gif/video.</h3>
+      <img src="A3 电压时间图.jpg" alt="Voltage vs Time Graph at V-measure" />
+      <p><strong>Caption:</strong> The graph above plots the voltage at V<sub>measure</sub> (Pin A0) over time during my video demonstration. We can calculate V<sub>measure</sub> directly from the Serial Monitor readings using <strong>V = (analogRead / 1023.0) &times; 5.0V</strong>:<br>
+      - During the <strong>Sunny/Bright phase</strong> (<code>analogRead</code> &approx; 920), V<sub>measure</sub> stays around <strong>4.50V</strong>.<br>
+      - During the <strong>Cloudy/Normal room light phase</strong> (<code>analogRead</code> &approx; 810), V<sub>measure</sub> sits around <strong>3.96V</strong>.<br>
+      - During the <strong>Night/Covered phase</strong> (<code>analogRead</code> &approx; 680), V<sub>measure</sub> drops to around <strong>3.32V</strong>.</p>
+
+      <h3>Question 3: AnalogWrite and analogRead are respectively 8-bit and 10-bit values. Imagine you had 10-bit PWM and a 16-bit analog-to-digital converter instead. How would this change your map() code? Explain your answer.</h3>
+      <p>Standard Arduino uses a 10-bit ADC for <code>analogRead()</code>, which provides 2<sup>10</sup> = 1,024 discrete levels (ranging from <strong>0 to 1023</strong>), and 8-bit PWM for <code>analogWrite()</code>, which provides 2<sup>8</sup> = 256 discrete levels (ranging from <strong>0 to 255</strong>). A standard full-range mapping looks like:<br>
+      <code>map(val, 0, 1023, 0, 255);</code></p>
+      <p>If we instead had a <strong>16-bit ADC</strong> and <strong>10-bit PWM</strong>:</p>
+      <ul>
+        <li>A 16-bit ADC provides 2<sup>16</sup> = 65,536 discrete levels, meaning <code>analogRead()</code> would return values ranging from <strong>0 to 65535</strong>.</li>
+        <li>A 10-bit PWM provides 2<sup>10</sup> = 1,024 discrete levels, meaning <code>analogWrite()</code> would accept values ranging from <strong>0 to 1023</strong>.</li>
+      </ul>
+      <p>Therefore, a full-range <code>map()</code> function would change to:<br>
+      <code>map(val, 0, 65535, 0, 1023);</code></p>
+      <p>Specifically, in my smart home code where I map the daytime light sensor range (from <code>darkThresh</code> to the maximum ADC value) to a brightness factor between ~60% and 100% of maximum PWM:<br>
+      - My current code (10-bit ADC to 8-bit PWM): <code>map(constrainedLight, 750, 1023, 150, 255);</code><br>
+      - With a 16-bit ADC and 10-bit PWM (scaling the thresholds proportionally: 750 / 1023 &times; 65535 &approx; 48046, and 150 / 255 &times; 1023 &approx; 602):<br>
+      <code>map(constrainedLight, 48046, 65535, 602, 1023);</code></p>
+
+      <h3>Question 4: AI Usage</h3>
+      <p>Yes, I used an AI tool (Gemini) as a thought partner and debugging assistant while completing this assignment. Specifically, I used it in the following ways:</p>
+      <ul>
+        <li><strong>Multi-Sensor State Machine Architecture:</strong> Because my prototype integrates a photoresistor, a thermistor, an ultrasonic distance sensor, a button, a buzzer, and dual RGB LEDs, using blocking <code>delay()</code> calls would freeze sensor readings and button responsiveness. The AI helped me structure a non-blocking loop using <code>millis()</code> timers for ultrasonic pinging (every 100ms), Serial Monitor logging (every 500ms), and smooth RGB cross-fading (every 10ms).</li>
+        <li><strong>Requirement Verification &amp; Code Refinement:</strong> When I initially updated my daytime weather logic into a 2&times;2 matrix (Hot/Cold &times; Sunny/Cloudy), I accidentally removed the <code>map()</code> function. The AI reviewed my code against the assignment rubric, pointed out the missing requirement, and helped me re-integrate <code>map()</code> to dynamically scale the overall LED brightness according to daylight intensity.</li>
+        <li><strong>Documentation &amp; Visualization:</strong> I also used the AI to format my voltage divider calculations in clean HTML (avoiding LaTeX rendering issues) and to plot the <em>V<sub>measure</sub> vs. Time</em> graph based on my recorded Serial Monitor values.</li>
+      </ul>
+      <p><strong>Reflection:</strong> Collaborating with AI allowed me to build a much more ambitious smart home prototype than a basic single-sensor circuit. However, all physical threshold calibration (such as determining <code>darkThresh = 750</code>, <code>sunnyThresh = 900</code>, and <code>tempThresh = 565</code>) had to be tested and tuned manually on my actual breadboard under real room lighting and temperature conditions, which reinforced my practical understanding of voltage dividers and sensor calibration.</p>
+    </div>
+
+  </body>
+</html>
