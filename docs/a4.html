@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, maximum-scale=1.0" />
+    <title>Example Student's HCDE 439 Physical Computing Page!</title>
+    <link href="style.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body>
+    <h1>Example Student's Assignment 4!</h1>
+    
+    <div class="header">
+      <img src="A4自动冲水马桶封面.jpg" alt="Smart Toilet Auto-Flusher Cover" style="max-width: 100%; border-radius: 8px;" />
+      <p>Here is all the documentation for assignment 4! I built a Smart Toilet Auto-Flusher using two libraries (<code>CapacitiveSensor.h</code> and <code>Servo.h</code>), combining a capacitive touch foil, an ultrasonic distance sensor, a buzzer, and a servo motor.</p>
+    </div>
+
+    <!-- 1. Schematic & Circuit -->
+    <div class="section">
+      <h2>1. Schematic & Circuit</h2>
+      
+      <img src="schematic_placeholder.jpg" alt="Circuit Schematic" style="max-width: 100%; border-radius: 8px;" />
+      <p><strong>Caption - Schematic & Resistor Justification:</strong><br> 
+      The schematic shows the Arduino Uno connected to an HC-SR04 ultrasonic sensor, a Piezo buzzer, a Servo motor, and a homemade capacitive foil sensor. <br>
+      <strong>Resistor choice:</strong> I used a <strong>1MΩ (1 Megaohm) resistor</strong> between the capacitive sensor's Send pin (Pin 4) and Receive pin (Pin 2). This specific value was chosen because 1MΩ provides excellent absolute touch detection and very close proximity sensing, which is perfect for detecting when someone sits on the toilet seat foil. (A smaller resistor would require hard direct contact, while a larger 10MΩ resistor would make it overly sensitive and prone to false triggers). The ultrasonic sensor, servo, and piezo buzzer directly use digital pins without additional resistors as they operate on standard 5V logic signals and have internal current limitations.
+      </p>
+
+      <img src="A4 电气图.jpg" alt="Breadboard Circuit" style="max-width: 100%; border-radius: 8px;" />
+      <p><strong>Caption:</strong> The physical breadboard implementation with the servo motor acting as the flush lever actuator, and the aluminum foil acting as the capacitive toilet seat sensor.</p>
+    </div>
+
+    <!-- 2. Circuit Operation -->
+    <div class="section">
+      <h2>2. Circuit Operation</h2>
+      <!-- 这里插入你的 GIF 或 MP4 动图 -->
+      <video width="100%" controls>
+        <source src="A4 Smart Flushing.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+      <p><strong>Caption:</strong> 
+      <strong>How it works:</strong> In the <code>setup()</code> phase, the system dynamically calibrates the empty toilet's capacitance and ambient distance. When someone sits down (capacitance spikes), it plays a greeting melody. When they stand up and walk away (distance > threshold), a 5-second countdown begins. If they don't return, the servo motor smoothly rotates 180 degrees to pull the flush lever, plays a completion chime, and resets to 0 degrees!
+      </p>
+    </div>
+
+    <!-- 3. Firmware (Code) -->
+    <div class="section">
+      <h2>3. Firmware</h2>
+      <p>Here is my fully commented Arduino code utilizing state machines, non-blocking timers (<code>millis()</code>), and dynamic sensor calibration in the <code>setup()</code> function.</p>
+      
+      <details>
+        <summary style="cursor: pointer; font-weight: bold; padding: 10px; background-color: #eeeeee; border-radius: 5px; margin-bottom: 10px;">
+          👉 Click to expand / collapse the Arduino Code
+        </summary>
+        <pre><code>
+// Include library for capacitive touch sensing
+#include <CapacitiveSensor.h>
+// Include library for servo motor control
+#include <Servo.h>
+
+// Define trigger pin for the ultrasonic sensor
+const int trigPin = 6;
+// Define echo pin for the ultrasonic sensor
+const int echoPin = 7;
+// Define output pin for the piezo buzzer
+const int buzzerPin = 8;
+// Define control pin for the servo motor
+const int servoPin = 9;
+
+// Initialize capacitive sensor with Send pin 4 and Receive pin 2
+CapacitiveSensor capSensor = CapacitiveSensor(4, 2);
+// Initialize the servo motor object
+Servo flushServo;
+
+// Define system states for the toilet state machine
+enum SystemState { IDLE, SITTING, LEFT_SEAT, COUNTDOWN, FLUSHING };
+// Track the current state of the system
+SystemState currentState = IDLE;
+
+// Store calibrated capacitance when a user is sitting
+long capSit = 0;
+// Store calibrated capacitance when the seat is empty
+long capEmpty = 0;
+// Store calculated midpoint threshold for capacitance
+long capThreshold = 0;
+
+// Store calibrated ultrasonic distance when a user is sitting
+long distSit = 0;
+// Store calibrated ultrasonic distance when the user walks away
+long distAway = 0;
+// Store calculated midpoint threshold for distance
+long distThreshold = 0;
+
+// Store the last valid ultrasonic distance to prevent false readings between pings
+long lastValidDistance = 200;
+
+// Track the start time of the 5-second flush countdown
+unsigned long countdownStartTime = 0;
+// Track the last time the ultrasonic sensor was triggered
+unsigned long lastPingTime = 0;
+// Track the last time the countdown beep was played
+unsigned long lastToneTime = 0;
+
+// Set the countdown duration to 5000 milliseconds (5 seconds)
+const unsigned long countdownDuration = 5000;
+
+// Helper function to play a single note cleanly and wait
+void playNote(int freq, int durationMs, int pauseMs) {
+  // Emit the specified frequency on the buzzer pin
+  tone(buzzerPin, freq, durationMs);
+  // Wait for the note and its slight gap to finish
+  delay(durationMs + pauseMs);
+  // Ensure the buzzer is completely stopped
+  noTone(buzzerPin);
+}
+
+// Play prompt sound 1: signals user to SIT DOWN for calibration
+void playPromptSit() {
+  // Play C5 note
+  playNote(523, 150, 50);
+  // Play G5 note
+  playNote(784, 300, 100);
+}
+
+// Play prompt sound 2: signals user to STAND UP and WALK AWAY
+void playPromptStand() {
+  // Play G5 note
+  playNote(784, 150, 50);
+  // Play E5 note
+  playNote(659, 150, 50);
+  // Play C5 note
+  playNote(523, 300, 100);
+}
+
+// Play Toei Subway "Sunao na Kokoro" style chime when calibration finishes
+void playReadySunao() {
+  // Play F5 note
+  playNote(698, 140, 20);
+  // Play A5 note
+  playNote(880, 140, 20);
+  // Play C6 note
+  playNote(1047, 140, 20);
+  // Play E6 note
+  playNote(1319, 180, 20);
+  // Play D6 note
+  playNote(1175, 140, 20);
+  // Play F6 sustained note
+  playNote(1397, 450, 100);
+}
+
+// Play Schubert's "The Trout" (Die Forelle) motif when the user sits down
+void playTroutMelody() {
+  // Play D5 pickup note
+  playNote(587, 150, 30);
+  // Play G5 note
+  playNote(784, 220, 30);
+  // Play G5 note
+  playNote(784, 220, 30);
+  // Play B5 note
+  playNote(988, 220, 30);
+  // Play B5 note
+  playNote(988, 220, 30);
+  // Play G5 note
+  playNote(784, 180, 100);
+}
+
+// Play Station Departure "Melody" style arpeggio after flushing completes
+void playFlushMelody() {
+  // Play G5 note
+  playNote(784, 140, 20);
+  // Play C6 note
+  playNote(1047, 140, 20);
+  // Play E6 note
+  playNote(1319, 140, 20);
+  // Play G6 note
+  playNote(1568, 240, 30);
+  // Play E6 note
+  playNote(1319, 160, 20);
+  // Play C6 final sustained chord root
+  playNote(1047, 450, 100);
+}
+
+// Helper function to read raw distance from ultrasonic sensor immediately
+long measureRawDistance() {
+  // Set trig pin LOW to ensure a clean pulse
+  digitalWrite(trigPin, LOW);
+  // Wait 2 microseconds
+  delayMicroseconds(2);
+  // Pull trig pin HIGH to emit ultrasonic wave
+  digitalWrite(trigPin, HIGH);
+  // Hold HIGH for 10 microseconds
+  delayMicroseconds(10);
+  // Pull trig pin back to LOW
+  digitalWrite(trigPin, LOW);
+  
+  // Measure the echo pulse width with a 25000us timeout (approx 4 meters)
+  long duration = pulseIn(echoPin, HIGH, 25000);
+  // If timeout occurs, return a default far distance of 250 cm
+  if (duration == 0) return 250;
+  // Convert pulse duration to centimeters and return
+  return duration * 0.034 / 2;
+}
+
+// Non-blocking distance updater used inside the main loop
+long getDistanceSmooth() {
+  // Only trigger a new ultrasonic ping every 60 milliseconds
+  if (millis() - lastPingTime >= 60) {
+    // Update the last ping timestamp
+    lastPingTime = millis();
+    // Measure the raw distance in centimeters
+    long rawDist = measureRawDistance();
+    // Smooth the reading with a simple filter to prevent sudden spikes
+    lastValidDistance = (lastValidDistance * 7 + rawDist * 3) / 10;
+  }
+  // Always return the latest valid smoothed distance instead of 999
+  return lastValidDistance;
+}
+
+// The setup function runs once on startup and performs 2-step calibration
+void setup() {
+  // Initialize serial monitor at 9600 baud
+  Serial.begin(9600);
+  
+  // Set ultrasonic trig pin as output
+  pinMode(trigPin, OUTPUT);
+  // Set ultrasonic echo pin as input
+  pinMode(echoPin, INPUT);
+  // Set buzzer pin as output
+  pinMode(buzzerPin, OUTPUT);
+  
+  // Attach the servo motor to pin 9
+  flushServo.attach(servoPin);
+  // Move servo to initial 0-degree rest position
+  flushServo.write(0);
+  // Allow servo time to reach 0 degrees smoothly
+  delay(500);
+
+  // --- STEP 1 CALIBRATION: USER SITTING ---
+  // Print instructions to Serial Monitor
+  Serial.println("=== STEP 1: PLEASE SIT ON THE TOILET SEAT NOW ===");
+  // Play musical prompt asking the user to sit down
+  playPromptSit();
+  // Give the user 3 seconds to sit down comfortably
+  delay(3000);
+  
+  // Initialize accumulators for sitting calibration
+  long sitCapSum = 0;
+  // Initialize accumulator for sitting distance
+  long sitDistSum = 0;
+  // Take 15 samples while the user is sitting
+  for (int i = 0; i < 15; i++) {
+    // Add capacitive reading to sum
+    sitCapSum += capSensor.capacitiveSensor(30);
+    // Add ultrasonic distance reading to sum
+    sitDistSum += measureRawDistance();
+    // Play a tiny tick sound to indicate sampling progress
+    tone(buzzerPin, 880, 20);
+    // Wait 100ms between samples
+    delay(100);
+  }
+  // Calculate average sitting capacitance
+  capSit = sitCapSum / 15;
+  // Calculate average sitting distance
+  distSit = sitDistSum / 15;
+  // Print calibrated sitting values
+  Serial.print("Calibrated SIT -> Cap: ");
+  // Print sitting capacitance value
+  Serial.print(capSit);
+  // Print sitting distance label
+  Serial.print(" | Dist: ");
+  // Print sitting distance value
+  Serial.println(distSit);
+
+  // --- STEP 2 CALIBRATION: USER STANDING & AWAY ---
+  // Print instructions for Step 2
+  Serial.println("=== STEP 2: PLEASE STAND UP AND STEP AWAY ===");
+  // Play musical prompt asking the user to stand up and step back
+  playPromptStand();
+  // Give the user 3.5 seconds to walk away from the toilet
+  delay(3500);
+
+  // Initialize accumulators for empty/away calibration
+  long emptyCapSum = 0;
+  // Initialize accumulator for away distance
+  long awayDistSum = 0;
+  // Take 15 samples while the toilet is empty and user is away
+  for (int i = 0; i < 15; i++) {
+    // Add empty capacitive reading to sum
+    emptyCapSum += capSensor.capacitiveSensor(30);
+    // Add away distance reading to sum
+    awayDistSum += measureRawDistance();
+    // Play a tiny tick sound to indicate sampling progress
+    tone(buzzerPin, 587, 20);
+    // Wait 100ms between samples
+    delay(100);
+  }
+  // Calculate average empty capacitance
+  capEmpty = emptyCapSum / 15;
+  // Calculate average away distance
+  distAway = awayDistSum / 15;
+  // Print calibrated away values
+  Serial.print("Calibrated AWAY -> Cap: ");
+  // Print empty capacitance value
+  Serial.print(capEmpty);
+  // Print away distance label
+  Serial.print(" | Dist: ");
+  // Print away distance value
+  Serial.println(distAway);
+
+  // Calculate dynamic midpoint threshold for capacitance
+  capThreshold = (capSit + capEmpty) / 2;
+  // Safety check in case the user forgot to sit during calibration
+  if (capThreshold <= capEmpty + 50) capThreshold = capEmpty + 200;
+
+  // Calculate dynamic midpoint threshold for ultrasonic distance
+  distThreshold = (distSit + distAway) / 2;
+  // Safety check to ensure distance threshold is reasonable
+  if (distThreshold <= distSit + 15) distThreshold = distSit + 40;
+
+  // Initialize the smoothed distance variable to the away distance
+  lastValidDistance = distAway;
+
+  // Print final calculated thresholds to Serial Monitor
+  Serial.print("READY! Thresholds -> Cap: ");
+  // Print capacitance threshold
+  Serial.print(capThreshold);
+  // Print distance threshold label
+  Serial.print(" | Dist: ");
+  // Print distance threshold
+  Serial.println(distThreshold);
+
+  // Play "Sunao na Kokoro" melody to announce calibration is complete
+  playReadySunao();
+}
+
+// The main loop runs continuously to manage states
+void loop() {
+  // Read current capacitance from the foil sensor
+  long currentCap = capSensor.capacitiveSensor(30);
+  // Read current smoothed distance from the ultrasonic sensor
+  long distance = getDistanceSmooth();
+
+  // STATE 1: IDLE - Toilet is empty, waiting for someone to sit
+  if (currentState == IDLE) {
+    // Check if foil capacitance crosses the calibrated sitting threshold
+    if (currentCap > capThreshold) {
+      // Transition state to SITTING
+      currentState = SITTING;
+      // Log state change to Serial Monitor
+      Serial.println("State: SITTING -> Playing Schubert's The Trout!");
+      // Play "The Trout" greeting melody
+      playTroutMelody();
+    }
+  }
+
+  // STATE 2: SITTING - User is currently seated
+  else if (currentState == SITTING) {
+    // Check if capacitance drops significantly below the threshold (user stood up)
+    if (currentCap < (capThreshold - (capSit - capEmpty) / 6)) {
+      // Transition state to LEFT_SEAT
+      currentState = LEFT_SEAT;
+      // Log state change to Serial Monitor
+      Serial.println("State: LEFT_SEAT -> User stood up, checking distance...");
+    }
+  }
+
+  // STATE 3: LEFT_SEAT - User stood up, waiting to see if they step away or sit back down
+  else if (currentState == LEFT_SEAT) {
+    // If user sits back down on the foil, return to SITTING state
+    if (currentCap > capThreshold) {
+      // Transition back to SITTING
+      currentState = SITTING;
+      // Log state change
+      Serial.println("State: SITTING -> User sat back down.");
+    }
+    // If user steps further away than the calibrated distance threshold, start countdown
+    else if (distance > distThreshold) {
+      // Transition to COUNTDOWN state
+      currentState = COUNTDOWN;
+      // Record the exact timestamp when countdown begins
+      countdownStartTime = millis();
+      // Reset the beep timer so the first countdown tick plays immediately
+      lastToneTime = millis() - 1000;
+      // Log state change
+      Serial.println("State: COUNTDOWN -> User stepped away, 5s countdown started!");
+    }
+  }
+
+  // STATE 4: COUNTDOWN - User is away, counting down 5 seconds before flushing
+  else if (currentState == COUNTDOWN) {
+    // Calculate how much time has elapsed in the countdown
+    unsigned long elapsed = millis() - countdownStartTime;
+
+    // Play a soft musical countdown tick every 1 second
+    if (millis() - lastToneTime >= 1000) {
+      // Update last tone timestamp
+      lastToneTime = millis();
+      // Emit a gentle 988Hz (B5) tick for 60ms
+      tone(buzzerPin, 988, 60);
+    }
+
+    // INTERRUPT CHECK: If user sits back down OR walks back close to the toilet
+    if (currentCap > capThreshold || distance < (distThreshold - 10)) {
+      // Stop any active buzzer tone
+      noTone(buzzerPin);
+      // Play a gentle two-note cancellation chime
+      playNote(659, 100, 20);
+      // Play second note of cancellation chime
+      playNote(523, 180, 20);
+      // Decide whether to return to SITTING or LEFT_SEAT based on capacitance
+      currentState = (currentCap > capThreshold) ? SITTING : LEFT_SEAT;
+      // Log cancellation to Serial Monitor
+      Serial.println("Countdown Cancelled! User returned to toilet area.");
+    }
+    // COMPLETION CHECK: If 5 seconds have passed without the user returning
+    else if (elapsed >= countdownDuration) {
+      // Stop any active buzzer tone before moving the servo
+      noTone(buzzerPin);
+      // Transition to FLUSHING state
+      currentState = FLUSHING;
+    }
+  }
+
+  // STATE 5: FLUSHING - Actuate servo motor first, then play departure melody
+  else if (currentState == FLUSHING) {
+    // Log flushing action to Serial Monitor
+    Serial.println("State: FLUSHING -> Rotating servo smoothly to pull flush lever!");
+    
+    // Define the target angle for the flush lever (adjust based on toilet mechanism)
+    int targetAngle = 180; 
+    
+    // Define the delay in milliseconds per degree of servo movement (larger = slower, smoother)
+    int speedDelay = 10;   
+    
+    // 1. Smoothly and slowly pull the flush lever (Forward Sweep)
+    for (int pos = 0; pos <= targetAngle; pos += 1) {
+      // Write the current angle position to the servo
+      flushServo.write(pos);
+      // Wait slightly to give the servo physical time to move and prevent current spikes
+      delay(speedDelay); 
+    }
+    
+    // Hold the flush lever open for 1000 milliseconds to ensure water flushes completely
+    delay(1000);
+    
+    // 2. Smoothly and slowly return the flush lever to rest (Backward Sweep)
+    for (int pos = targetAngle; pos >= 0; pos -= 1) {
+      // Write the current returning angle position to the servo
+      flushServo.write(pos);
+      // Wait slightly to ensure a smooth return and prevent current spikes
+      delay(speedDelay);
+    }
+    
+    // Play the station departure "Melody" chime to celebrate a clean flush
+    playFlushMelody();
+    
+    // Reset smoothed distance to away value to prevent false triggers after flushing
+    lastValidDistance = distAway;
+    // Return state machine to IDLE for the next user
+    currentState = IDLE;
+    // Log completion
+    Serial.println("Flush complete. System back to IDLE.");
+  }
+}
+        </code></pre>
+      </details>
+    </div>
+
+    <!-- 4. Questions & Answers -->
+    <div class="section">
+      <h2>4. Additional Questions</h2>
+      
+      <h3>Question 1: Servo Motor Voltage Graph</h3>
+      <p><em>Say you are using a servo motor you attach to pin 9. In your loop() you have the following code (looping 0 to 180 degrees with delay 100). Draw a graph with the x-axis as time and the y-axis as voltage at pin 9.</em></p>
+      
+      <!-- 这里插入一张你自己画的伺服电机PWM图 -->
+      <img src="servo_graph_placeholder.jpg" alt="Servo Motor PWM Voltage Graph" style="max-width: 100%; border-radius: 8px;" />
+      
+      <p><strong>Answer:</strong> 
+      A servo motor is controlled using a <strong>PWM (Pulse Width Modulation) signal</strong>. The y-axis alternates strictly between 0V and 5V. The x-axis (time) consists of a repeating period of exactly <strong>20 milliseconds (50Hz)</strong>. 
+      <br><br>
+      Inside every 20ms period, there is a short high-voltage pulse (5V). The width (duration) of this high pulse tells the servo what angle to rotate to:
+      <br>• ~1.0 ms pulse width = 0 degrees
+      <br>• ~1.5 ms pulse width = 90 degrees
+      <br>• ~2.0 ms pulse width = 180 degrees
+      <br><br>
+      Because the given code uses a <code>delay(100)</code> in the loop, the pulse width will remain exactly the same for 5 consecutive 20ms cycles (5 * 20ms = 100ms), and then the pulse width will increase by a tiny fraction (corresponding to 1 degree) for the next 100ms, gradually growing from ~1ms to ~2ms over the course of 18 seconds.
+      </p>
+
+      <h3>Question 2: Handling 1% Erroneous Readings</h3>
+      <p><em>Your input device is slightly broken, leading it to give us an erroneous reading 1% of the time. How can we address this?</em></p>
+      <p><strong>Answer:</strong> 
+      If a sensor produces an extreme outlier reading only 1% of the time (e.g., distance jumps from 50cm to 900cm instantly), we can address this using a <strong>Median Filter</strong> or a <strong>Change Constraint (Derivative) Check</strong>. Since physical objects (like humans) cannot teleport instantly, we can tell the code to ignore sudden impossible spikes and keep the last known good value.
+      <br><br><strong>Pseudocode (Constraint Filter):</strong>
+      </p>
+      <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;"><code>
+int newValue = readSensor();
+// Check if the change is physically impossible (e.g., jumping > 300 units in 1 millisecond)
+if (abs(newValue - lastValidValue) > 300) {
+    // Ignore the crazy spike, assume it's the 1% error
+    currentValue = lastValidValue; 
+} else {
+    // It's a valid reading, update our variables
+    currentValue = newValue;
+    lastValidValue = newValue;
+}
+      </code></pre>
+
+      <h3>Question 3: Handling 10% Continuous Noise</h3>
+      <p><em>Your input device is slightly noisy, leading the measurement to randomly deviate from the true measurement up or down by 10%. How can we address this?</em></p>
+      <p><strong>Answer:</strong> 
+      If the sensor is continuously noisy, vibrating up and down by 10%, outlier rejection won't work. Instead, we need to smooth the data out over time using an <strong>Exponential Smoothing Filter (Low-pass Filter)</strong> or a <strong>Moving Average</strong>. This blends a small percentage of the new reading with a large percentage of historical data to create a smooth, stable line.
+      <br><br><strong>Pseudocode (Exponential Smoothing):</strong>
+      </p>
+      <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;"><code>
+float smoothedValue = 0;
+// Smoothing factor (0.0 to 1.0). Smaller = smoother but slower to react.
+float alpha = 0.2; 
+
+void loop() {
+    int rawReading = readSensor();
+    // Blend 20% of the new reading with 80% of the historical average
+    smoothedValue = (alpha * rawReading) + ((1.0 - alpha) * smoothedValue);
+    
+    // Use 'smoothedValue' to control motors/LEDs instead of 'rawReading'
+}
+      </code></pre>
+
+      <h3>Question 4: AI Usage Statement</h3>
+      <p><em>Did you use AI tools in completing this assignment?</em></p>
+      <p><strong>Answer:</strong> 
+      Yes, I used Gemini as a thought partner and debugging assistant to architect the complex state-machine logic for this assignment. Because my concept involved multiple sequential physical conditions (sitting -> standing -> moving 1 meter away -> waiting for 5 seconds without returning -> actuating the servo smoothly), using basic <code>delay()</code> functions would have frozen the system and caused the Arduino to miss a user returning to the toilet during the countdown. 
+      <br><br>
+      The AI helped me architect an <code>enum SystemState</code> structure using <code>millis()</code> timers, and taught me how to write a <code>for</code> loop to sweep the servo motor slowly instead of writing <code>flushServo.write(180)</code> instantly, which prevented my Arduino from crashing due to sudden current spikes. Furthermore, the AI guided me to build a dynamic, two-step calibration sequence in the <code>setup()</code> function to establish the baseline capacitance of the aluminum foil and the baseline ultrasonic distance, satisfying the assignment's calibration requirement in a highly robust way. Finally, I used the AI to help format my HTML documentation page.
+      </p>
+    </div>
+
+  </body>
+</html>
