@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, maximum-scale=1.0" />
+    <title>A5: High Power & Transistors - Smart & Anti-theft Nightlight</title>
+    <link href="style.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body>
+    <h1>A5: Transistors - Smart & Anti-theft Nightlight</h1>
+    
+    <div class="header">
+      <img src="A5 电气图.jpg" alt="Cover photo of the smart nightlight" style="max-width: 100%; border-radius: 8px;" />
+      <p>For Assignment 5, I built a smart lighting system that controls a high-load 12V LED strip using an IRLZ44N N-MOSFET. It acts as an ambient nightlight using a PIR motion sensor and a photoresistor. Touching a capacitive foil sensor triggers a "anti-theft Music Mode" where buzzer play a melody while the 12V LED strip visualizes the music notes!</p>
+    </div>
+
+    <!-- 1. Schematic & Circuit -->
+    <div class="section">
+      <h2>1. Schematic & Circuit (Calculations & Justifications)</h2>
+      
+      <img src="A5 电路图.jpg" alt="Circuit Schematic" style="max-width: 60%; border-radius: 8px;" />
+      
+      <h3>Hardware Configurations & Critical Calculations:</h3>
+      <ul>
+        <li>
+          <strong>The High-Load Output (12V LED Strip & MOSFET):</strong><br>
+          I am using an external 12V DC power supply to power the LED strip. The positive wire of the LED strip goes directly to the 12V power supply. The negative wire connects to the <strong>Drain (Pin 2)</strong> of the IRLZ44N N-MOSFET. The <strong>Source (Pin 3)</strong> goes to the common Ground (connecting Arduino GND and 12V GND). The <strong>Gate (Pin 1)</strong> connects to Arduino PWM Pin 9 through a 330Ω resistor (to protect the Arduino from inrush current to the gate capacitor), with a 10kΩ pull-down resistor to GND to ensure the MOSFET stays OFF when the Arduino is booting.<br>
+          <em>Current Justification:</em> My 1-meter 12V LED strip draws approximately <strong>1.2A</strong> of current. According to the IRLZ44N datasheet, it can handle an absolute maximum continuous drain current of <strong>47A</strong> at room temperature. Because 1.2A is vastly below 47A, the transistor will run safely without needing a heatsink.
+        </li>
+        <br>
+        <li>
+          <strong>Photoresistor (LDR) Voltage Divider (Pin A0):</strong><br>
+          I used a 10kΩ fixed resistor in series with the LDR. <br>
+          - <em>In bright room light (LDR ≈ 2kΩ):</em> Expected Voltage V<sub>out</sub> = 5V &times; [ 10kΩ / (2kΩ + 10kΩ) ] = <strong>4.17V</strong>.<br>
+          - <em>In the dark (LDR ≈ 20kΩ):</em> Expected Voltage V<sub>out</sub> = 5V &times; [ 10kΩ / (20kΩ + 10kΩ) ] = <strong>1.67V</strong>.<br>
+          This confirms my <code>darkThreshold</code> in the code (analog reading around 400-500) will accurately detect nighttime.
+        </li>
+        <br>
+        <li>
+          <strong>Input with Library (Capacitive Touch on Pins 4 & 2):</strong><br>
+          To fulfill the library requirement, I used aluminum foil as a capacitive touch button. A <strong>1MΩ resistor</strong> sits between the Send Pin (4) and Receive Pin (2). 1MΩ provides a fast and reliable touch detection range, preventing false triggers while reacting instantly to direct touch to start the music.
+        </li>
+      </ul>
+
+      <img src="A5 电气图.jpg" alt="Breadboard Circuit" style="max-width: 0%; border-radius: 8px;" />
+      <p><strong>Caption:</strong> The breadboard layout showcasing the separated logic circuit (5V) and load circuit (12V) united by a common ground.</p>
+    </div>
+
+    <!-- 2. Circuit Operation -->
+    <div class="section">
+      <h2>2. Circuit Operation</h2>
+      <video width="100%" controls>
+        <source src="A5 电路演示.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+      <p><strong>Caption:</strong> 
+      <strong>Daytime:</strong> The LED strip remains off regardless of motion. <br>
+      <strong>Nighttime:</strong> When the PIR detects motion, the LED strip smoothly fades in via PWM. If motion stops, a 10-second timer counts down before fading out. <br>
+      <strong>Anti-theft Mode:</strong> When the capacitive foil is touched, the system enters an interrupt sequence. Buzzer play a rapid-alternating melody, and the LED strip brightness scales dynamically using <code>analogWrite()</code> synced to the musical notes!
+      </p>
+    </div>
+
+    <!-- 3. Firmware (Code) -->
+    <div class="section">
+      <h2>3. Firmware</h2>
+      <p>Here is my Arduino code. <strong>Every single line with content has an explanatory comment placed directly above it.</strong> I also explained the <code>pinMode()</code> states.</p>
+      
+      <details>
+        <summary style="cursor: pointer; font-weight: bold; padding: 10px; background-color: #eeeeee; border-radius: 5px; margin-bottom: 10px;">
+          👉 Click to expand / collapse the Arduino Code
+        </summary>
+        <pre><code>
+// Include the CapacitiveSensor library to use the foil touch sensor
+#include <CapacitiveSensor.h>
+// Include the standard pitches library for music notes
+#include "pitches.h"
+
+// Define the PWM pin that controls the N-MOSFET (LED Strip)
+const int mosfetPin = 9;
+// Define the analog pin for the LDR voltage divider
+const int ldrPin = A0;
+// Define the digital pin for the PIR motion sensor
+const int pirPin = 7;
+// Define the digital pin for the Melody Buzzer
+const int buzzerPin = 10;
+
+// Initialize the capacitive sensor with Send pin 4 and Receive pin 2
+CapacitiveSensor capSensor = CapacitiveSensor(4, 2);
+
+// Set the threshold for the LDR to distinguish day from night
+const int darkThreshold = 500;
+// Set the threshold for capacitive touch to trigger music
+const long touchThreshold = 300;
+
+// Track the current brightness of the LED strip for fading
+int currentBrightness = 0;
+// Store the timestamp of the last detected motion
+unsigned long lastMotionTime = 0;
+// Set the duration to keep lights on after motion stops (10 seconds)
+const unsigned long lightDuration = 1000;
+// Track whether the night light is currently active
+bool isLightOn = false;
+
+// The setup function runs once when the board is powered on
+void setup() {
+  // Initialize serial communication for debugging purposes
+  Serial.begin(9600);
+
+  // Set the MOSFET pin as OUTPUT. This configures the pin to a low-impedance state, currently driving 0V (LOW), keeping the transistor Gate discharged and the LED strip completely OFF.
+  pinMode(mosfetPin, OUTPUT);
+  
+  // Set the PIR sensor pin as INPUT. This places the pin in a high-impedance state to passively listen for 0V or 5V signals from the motion module.
+  pinMode(pirPin, INPUT);
+  
+  // Set the Buzzer pin as OUTPUT. It is in a low-impedance state outputting 0V, making no sound.
+  pinMode(buzzerPin, OUTPUT);
+  
+  // Explicitly ensure the MOSFET is turned off at startup
+  analogWrite(mosfetPin, 0);
+}
+
+// The main loop function runs continuously
+void loop() {
+  // Read the current light level from the LDR
+  int lightLevel = analogRead(ldrPin);
+  
+  // Read the current motion state from the PIR sensor
+  int motionDetected = digitalRead(pirPin);
+  
+  // Read the capacitive sensor value (taking 30 samples for stability)
+  long touchValue = capSensor.capacitiveSensor(30);
+
+  // Check if the capacitive foil is touched (Music Mode Trigger)
+  if (touchValue > touchThreshold) {
+    // Call the function to play music and flash lights
+    playMusicShow();
+    // After music finishes, reset the motion timer to avoid instant shutoff
+    lastMotionTime = millis();
+  }
+
+  // Check if it is currently dark enough to need the night light
+  if (lightLevel < darkThreshold) {
+    
+    // Check if the PIR sensor is currently detecting motion
+    if (motionDetected == HIGH) {
+      // Update the last motion timestamp to the current time
+      lastMotionTime = millis();
+      
+      // Check if the light is currently off
+      if (!isLightOn) {
+        // Slowly fade the LED strip in
+        fadeIn();
+        // Update the state flag to indicate the light is on
+        isLightOn = true;
+      }
+    }
+
+    // Calculate how much time has passed since the last motion
+    unsigned long timeSinceMotion = millis() - lastMotionTime;
+
+    // Check if the light is on AND the 10-second timer has expired
+    if (isLightOn && (timeSinceMotion > lightDuration)) {
+      // Slowly fade the LED strip out
+      fadeOut();
+      // Update the state flag to indicate the light is off
+      isLightOn = false;
+    }
+    
+  } 
+  // If it is daytime (bright), ensure the light turns off
+  else {
+    // Check if the light is currently on
+    if (isLightOn) {
+      // Slowly fade the LED strip out
+      fadeOut();
+      // Update the state flag to indicate the light is off
+      isLightOn = false;
+    }
+  }
+}
+
+// Function to smoothly increase the MOSFET PWM duty cycle
+void fadeIn() {
+  // Loop from 0 to 255 to increase brightness
+  for (int i = 0; i <= 255; i++) {
+    // Write the current PWM value to the MOSFET Gate
+    analogWrite(mosfetPin, i);
+    // Wait for 5 milliseconds to create a smooth visual transition
+    delay(5);
+  }
+  // Store the final maximum brightness state
+  currentBrightness = 255;
+}
+
+// Function to smoothly decrease the MOSFET PWM duty cycle
+void fadeOut() {
+  // Loop from current brightness down to 0
+  for (int i = currentBrightness; i >= 0; i--) {
+    // Write the current PWM value to the MOSFET Gate
+    analogWrite(mosfetPin, i);
+    // Wait for 10 milliseconds to create a slow, sleepy fade out
+    delay(10);
+  }
+  // Store the final zero brightness state
+  currentBrightness = 0;
+}
+
+// Function to play single-tone music and visualize it on the LED strip
+void playMusicShow() {
+  // Define an array of frequencies for the Melody
+  int melody[] = {NOTE_A5, NOTE_C6, NOTE_F5, NOTE_A5, 
+                  NOTE_G5, NOTE_C6, NOTE_E5, NOTE_G5, 
+                  NOTE_F5, NOTE_A5, NOTE_D5, NOTE_F5,
+                  NOTE_E5, NOTE_A5, NOTE_C5, NOTE_E5,
+                  NOTE_D5, NOTE_F5, NOTE_AS4, NOTE_D5,
+                  NOTE_C5, NOTE_F5, NOTE_A4, NOTE_C5,
+                  NOTE_AS4, NOTE_C5, NOTE_D5, NOTE_E5,
+                  NOTE_F5, NOTE_G5, NOTE_A5};
+  
+  // Define an array for the duration of each note in milliseconds
+  int noteDurations[] = {100, 100, 100, 100, 
+                         100, 100, 100, 100,
+                         100, 100, 100, 100, 
+                         100, 100, 100, 100,
+                         100, 100, 100, 100,
+                         100, 100, 100, 100,
+                         100, 100, 100, 100,
+                         250, 250, 800};
+  int numMelo = sizeof(noteDurations) / sizeof(noteDurations[0]); 
+  // Loop through all 7 notes in the arrays
+  for (int thisNote = 0; thisNote < numMelo; thisNote++) {
+    // Map the pitch of the melody note to a PWM brightness value (0-255)
+    // NOTE_C6 is approx 1047Hz, scaling down for standard notes
+    int ledBrightness = map(melody[thisNote], 0, 1100, 0, 255);
+    
+    // Write the mapped brightness to the 12V LED Strip via MOSFET
+    analogWrite(mosfetPin, constrain(ledBrightness, 0, 255));
+
+    // Get the duration for the current note
+    int duration = noteDurations[thisNote];
+    
+    // Play the melody note for the specified duration
+    tone(buzzerPin, melody[thisNote], duration);
+    
+    // Wait for the note to finish playing
+    delay(duration);
+    
+    // Stop any remaining sound from the buzzer
+    noTone(buzzerPin);
+    
+    // Turn off the LED strip momentarily to visually separate the notes
+    analogWrite(mosfetPin, 0);
+    
+    // Add a short 50-millisecond pause between musical notes for articulation
+    delay(20);
+  }
+}
+        </code></pre>
+      </details>
+    </div>
+
+    <!-- 4. Questions & Answers -->
+    <div class="section">
+      <h2>4. Additional Questions</h2>
+      
+      <h3>Question 1: Mosfet Max Current</h3>
+      <p><em>These are the datasheets for the n-mosfet transistor: DMT6009LCT, IRLZ44N, P30N06LE. For your mosfet (IRLZ44N), what is the absolute maximum amount of current between pins 2 and 3?</em></p>
+      <p><strong>Answer:</strong> 
+      According to the Infineon IRLZ44N datasheet, the Absolute Maximum Continuous Drain Current (I<sub>D</sub>) between Pin 2 (Drain) and Pin 3 (Source) at a case temperature of 25&deg;C is <strong>47A</strong>. If it is subjected to a brief, pulsed current (I<sub>DM</sub>), the absolute maximum it can handle is <strong>160A</strong>.
+      </p>
+
+      <h3>Question 2: DC Motor Schematic</h3>
+      <p><em>Draw a schematic for a circuit with using at least your arduino, a DC motor, a flyback diode. Find parts with datasheets you could use for each of these schematic components.</em></p>
+      
+      <!-- 这里插入你自己画的包含二极管和电容的电机原理图 -->
+      <img src="A5 Q2.jpg" alt="DC Motor Schematic" style="max-width: 50%; border-radius: 8px;" />
+      
+
+      <h3>Question 3: L293D Dual Motor Control</h3>
+      <p><em>Here is the datasheet for the L293D chip. Draw a schematic using at least your arduino, this chip, and two motors. Write (pseudo) code that shows how you would move the motors both forward, both back, then one forward one back, and one back then forward.</em></p>
+      
+      <!-- 这里插入你画的 L293D 芯片控制两个电机的原理图 -->
+      <img src="A5 Q3.jpg" alt="L293D H-Bridge Schematic" style="max-width: 60%; border-radius: 8px;" />
+      
+
+      <p><strong>Answer & Pseudocode:</strong><br>
+      The L293D is a an H-Bridge. Motor 1 connects to output pins 1Y (Pin 3) and 2Y (Pin 6). Motor 2 connects to output pins 3Y (Pin 11) and 4Y (Pin 14). The Arduino controls them via the input pins (1A, 2A for Motor 1; 3A, 4A for Motor 2). By reversing the HIGH/LOW logic on the inputs, the motors reverse direction.
+      </p>
+      <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto;"><code>
+// Define Arduino pins connected to L293D Inputs
+int motor1_A = 2; // L293D Pin 1A
+int motor1_B = 3; // L293D Pin 2A
+int motor2_A = 4; // L293D Pin 3A
+int motor2_B = 5; // L293D Pin 4A
+
+void setup() {
+  pinMode(motor1_A, OUTPUT); pinMode(motor1_B, OUTPUT);
+  pinMode(motor2_A, OUTPUT); pinMode(motor2_B, OUTPUT);
+}
+
+void loop() {
+  // 1. BOTH MOTORS FORWARD
+  digitalWrite(motor1_A, HIGH); digitalWrite(motor1_B, LOW);
+  digitalWrite(motor2_A, HIGH); digitalWrite(motor2_B, LOW);
+  delay(2000);
+
+  // 2. BOTH MOTORS BACKWARD
+  digitalWrite(motor1_A, LOW); digitalWrite(motor1_B, HIGH);
+  digitalWrite(motor2_A, LOW); digitalWrite(motor2_B, HIGH);
+  delay(2000);
+
+  // 3. ONE FORWARD, ONE BACKWARD (e.g., Robot turning right)
+  digitalWrite(motor1_A, HIGH); digitalWrite(motor1_B, LOW);
+  digitalWrite(motor2_A, LOW);  digitalWrite(motor2_B, HIGH);
+  delay(2000);
+
+  // 4. ONE BACKWARD, ONE FORWARD (e.g., Robot turning left)
+  digitalWrite(motor1_A, LOW);  digitalWrite(motor1_B, HIGH);
+  digitalWrite(motor2_A, HIGH); digitalWrite(motor2_B, LOW);
+  delay(2000);
+}
+      </code></pre>
+
+      <h3>Question 4: AI Usage Statement</h3>
+      <p><em>Did you use AI tools in completing this assignment?</em></p>
+      <p><strong>Answer:</strong> 
+      Yes, I used Gemini as an educational thought partner. Since I wanted to control a 12V LED strip and make a dual-tone music visualizer, I ran into a hardware limitation: the standard Arduino <code>tone()</code> function blocks multiple pins from playing frequencies simultaneously. The AI taught me an programming trick—"Rapid Alternating Tones" (pseudo-polyphony)—where the code rapidly switches between the melody pin and the bass pin every 5 milliseconds within a <code>while</code> loop. But it doen't sounds good, so I decided to use a single-tone melody instead. 
+      The AI also helped me structure the state-machine logic so the 10-second PIR motion countdown doesn't conflict with the capacitive touch interrupt. Finally, the AI assisted in formatting this webpage and ensuring all my MOSFET current calculations were verified against the official IRLZ44N datasheet parameters.
+      </p>
+    </div>
+
+  </body>
+</html>
