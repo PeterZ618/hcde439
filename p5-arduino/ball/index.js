@@ -26,6 +26,9 @@ function draw() {
   let y = map(Number(arr[1]), 512, 1023, 0, windowHeight);
   let diameter = map(Number(arr[2]), 512, 1023, MIN_DIAMETER, MAX_DIAMETER);
 
+  //Draw with out new data
+  background("teal");
+
   // Draw a circle using our readings
   circle(x, y, diameter);
 }
@@ -44,7 +47,7 @@ function setupSerial() {
 
   // create a connect button
   connectBtn = createButton("Connect to Arduino");
-  connectBtn.position(5, 5); // Position the button in the top left of the screen.
+  connectBtn.position(100, 100); // Position the button in the top left of the screen.
   connectBtn.mouseClicked(onConnectButtonClicked); // When the button is clicked, run the onConnectButtonClicked function
 }
 
